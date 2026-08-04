@@ -1,4 +1,4 @@
-package com.monitoring.transactions.exception;
+package com.monitoring.transactions.Exception;
 
 import java.time.LocalDateTime;
 import java.util.Collections;
