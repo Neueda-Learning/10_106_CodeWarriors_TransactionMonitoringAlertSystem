@@ -1,4 +1,4 @@
-package com.monitoring.transactions.bankTransactions;
+package com.monitoring.transactions.BankTransactions;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
