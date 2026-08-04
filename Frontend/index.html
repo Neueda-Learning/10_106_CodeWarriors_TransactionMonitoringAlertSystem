@@ -44,7 +44,57 @@
         <!-- Dashboard View -->
         <div id="dashboard-view" class="view-section active">
             <h2 class="mb-4">System Overview</h2>
-            <p class="text-muted">Welcome to the Transaction Monitoring Dashboard.</p>
+            <p class="text-muted mb-4">Welcome to the Transaction Monitoring Dashboard.</p>
+            
+            <div class="row g-4">
+                <div class="col-md-3">
+                    <div class="card shadow-sm border-primary">
+                        <div class="card-body">
+                            <h6 class="card-title text-muted text-uppercase mb-2">Total Transactions</h6>
+                            <h3 class="card-text fw-bold text-primary" id="summary-total-tx">0</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card shadow-sm border-danger">
+                        <div class="card-body">
+                            <h6 class="card-title text-muted text-uppercase mb-2">Active Alerts</h6>
+                            <h3 class="card-text fw-bold text-danger" id="summary-active-alerts">0</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card shadow-sm border-warning">
+                        <div class="card-body">
+                            <h6 class="card-title text-muted text-uppercase mb-2">High Severity</h6>
+                            <h3 class="card-text fw-bold text-warning" id="summary-high-severity">0</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card shadow-sm border-success">
+                        <div class="card-body">
+                            <h6 class="card-title text-muted text-uppercase mb-2">System Status</h6>
+                            <h3 class="card-text fw-bold text-success">Healthy</h3>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="row mt-4">
+                <div class="col-12">
+                    <div class="card shadow-sm border-0">
+                        <div class="card-header bg-white border-bottom-0 pt-4 pb-0">
+                            <h5 class="mb-0 fw-bold">Recent Activity Stream</h5>
+                        </div>
+                        <div class="card-body p-0 mt-3">
+                            <ul class="list-group list-group-flush" id="dashboard-activity-stream">
+                                <!-- Activity items will be injected here -->
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Transactions View -->
