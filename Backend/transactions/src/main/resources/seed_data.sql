@@ -236,3 +236,18 @@ INSERT INTO bank_transactions (id, from_account_id, to_account_id, amount, curre
 (199, 18, 15, 24742.41, 'USD', '2026-08-01 12:53:38', 'FAILED', '2026-08-01 12:53:38'),
 (200, 9, 4, 1871.94, 'USD', '2026-08-01 13:40:38', 'COMPLETED', '2026-08-01 13:40:38');
 
+-- Insert Alerts
+INSERT INTO alerts (id, transaction_id, rule_id, alert_reason, severity, old_status, new_status, created_at, updated_at) VALUES
+(1, 19, 1, 'Transaction amount exceeded configured threshold of 10000.00 USD.', 'HIGH', 'PENDING', 'COMPLETED', '2026-07-28 13:18:38', '2026-07-28 13:18:38'),
+(2, 26, 1, 'Transaction amount exceeded configured threshold of 10000.00 USD.', 'HIGH', 'PENDING', 'COMPLETED', '2026-07-28 17:09:38', '2026-07-28 17:09:38'),
+(3, 70, 1, 'Transaction amount exceeded configured threshold of 10000.00 USD.', 'HIGH', 'PENDING', 'COMPLETED', '2026-07-29 16:27:38', '2026-07-29 16:27:38'),
+(4, 110, 1, 'Transaction amount exceeded configured threshold of 10000.00 USD.', 'HIGH', 'PENDING', 'FAILED', '2026-07-30 14:03:38', '2026-07-30 14:03:38'),
+(5, 112, 1, 'Transaction amount exceeded configured threshold of 10000.00 USD.', 'HIGH', 'PENDING', 'COMPLETED', '2026-07-30 15:13:38', '2026-07-30 15:13:38'),
+(6, 114, 1, 'Transaction amount exceeded configured threshold of 10000.00 USD.', 'HIGH', 'PENDING', 'COMPLETED', '2026-07-30 16:05:38', '2026-07-30 16:05:38'),
+(7, 149, 1, 'Transaction amount exceeded configured threshold of 10000.00 USD.', 'HIGH', 'PENDING', 'COMPLETED', '2026-07-31 09:37:38', '2026-07-31 09:37:38'),
+(8, 189, 1, 'Transaction amount exceeded configured threshold of 10000.00 USD.', 'HIGH', 'PENDING', 'COMPLETED', '2026-08-01 07:45:38', '2026-08-01 07:45:38'),
+(9, 199, 1, 'Transaction amount exceeded configured threshold of 10000.00 USD.', 'HIGH', 'PENDING', 'FAILED', '2026-08-01 12:54:38', '2026-08-01 12:54:38'),
+(10, 28, 2, 'Multiple suspicious transactions detected in a short time window for the source account.', 'MEDIUM', 'PENDING', 'FAILED', '2026-07-28 18:00:38', '2026-07-28 18:00:38'),
+(11, 29, 2, 'Multiple suspicious transactions detected in a short time window for the source account.', 'MEDIUM', 'PENDING', 'FAILED', '2026-07-28 18:22:38', '2026-07-28 18:22:38'),
+(12, 139, 2, 'High transaction frequency detected for the source account within the configured time window.', 'MEDIUM', 'PENDING', 'PENDING', '2026-07-31 05:34:38', '2026-07-31 05:34:38');
+
