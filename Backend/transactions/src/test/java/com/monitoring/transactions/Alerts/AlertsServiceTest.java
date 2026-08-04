@@ -44,7 +44,6 @@ public class AlertsServiceTest {
 	@Test
 	void createAlert_shouldThrowWhenTransactionIdIsNull() {
 		when(alert.getTransactionId()).thenReturn(null);
-		when(alert.getRuleId()).thenReturn(1L);
 
 		RuntimeException exception = assertThrows(RuntimeException.class, () -> alertsService.createAlert(alert));
 		assertEquals("Transaction ID cannot be null", exception.getMessage());
