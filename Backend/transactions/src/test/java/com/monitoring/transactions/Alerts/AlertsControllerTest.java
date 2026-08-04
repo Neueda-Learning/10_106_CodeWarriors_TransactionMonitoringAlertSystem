@@ -1,5 +1,7 @@
 package com.monitoring.transactions.Alerts;
 
+import com.monitoring.transactions.Exception.GeneralizedException;
+import com.monitoring.transactions.Exception.GlobalExceptionHandler;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -20,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -33,7 +36,9 @@ class AlertsControllerTest {
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(new AlertsController(alertsService)).build();
+        mockMvc = MockMvcBuilders.standaloneSetup(new AlertsController(alertsService))
+            .setControllerAdvice(new GlobalExceptionHandler())
+            .build();
     }
 
     @Test
@@ -63,7 +68,7 @@ class AlertsControllerTest {
     @Test
     void createAlert_shouldReturnBadRequestWhenServiceThrowsValidationError() throws Exception {
         when(alertsService.createAlert(any(Alerts.class)))
-                .thenThrow(new RuntimeException("Transaction ID cannot be null"));
+            .thenThrow(new GeneralizedException("Transaction ID cannot be null", HttpStatus.BAD_REQUEST));
 
         mockMvc.perform(post("/alerts")
                 .contentType(APPLICATION_JSON)
@@ -73,7 +78,7 @@ class AlertsControllerTest {
                         }
                         """))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.status").value(400))
                 .andExpect(jsonPath("$.message").value("Transaction ID cannot be null"));
 
         verify(alertsService).createAlert(any(Alerts.class));
@@ -82,7 +87,7 @@ class AlertsControllerTest {
     @Test
     void createAlert_shouldReturnInternalServerErrorWhenUnexpectedFailureOccurs() throws Exception {
         when(alertsService.createAlert(any(Alerts.class)))
-                .thenThrow(new RuntimeException("Database unavailable"));
+            .thenThrow(new GeneralizedException("Database unavailable", HttpStatus.INTERNAL_SERVER_ERROR));
 
         mockMvc.perform(post("/alerts")
                 .contentType(APPLICATION_JSON)
@@ -93,7 +98,7 @@ class AlertsControllerTest {
                         }
                         """))
                 .andExpect(status().isInternalServerError())
-                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.status").value(500))
                 .andExpect(jsonPath("$.message").value("Database unavailable"));
     }
 
@@ -112,11 +117,12 @@ class AlertsControllerTest {
 
     @Test
     void getAllAlerts_shouldReturnInternalServerErrorWhenServiceFails() throws Exception {
-        when(alertsService.getAllAlerts()).thenThrow(new RuntimeException("Failed to fetch alerts"));
+        when(alertsService.getAllAlerts())
+            .thenThrow(new GeneralizedException("Failed to fetch alerts", HttpStatus.INTERNAL_SERVER_ERROR));
 
         mockMvc.perform(get("/alerts"))
                 .andExpect(status().isInternalServerError())
-                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.status").value(500))
                 .andExpect(jsonPath("$.message").value("Failed to fetch alerts"));
     }
 
@@ -133,31 +139,32 @@ class AlertsControllerTest {
 
     @Test
     void getAlertById_shouldReturnNotFoundWhenAlertMissing() throws Exception {
-        when(alertsService.getAlertById(99L)).thenThrow(new RuntimeException("Alert not found"));
+        when(alertsService.getAlertById(99L)).thenThrow(new GeneralizedException("Alert not found", HttpStatus.NOT_FOUND));
 
         mockMvc.perform(get("/alerts/99"))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.status").value(404))
                 .andExpect(jsonPath("$.message").value("Alert not found"));
     }
 
     @Test
     void getAlertById_shouldReturnBadRequestWhenIdInvalid() throws Exception {
-        when(alertsService.getAlertById(0L)).thenThrow(new RuntimeException("Invalid Alert ID"));
+        when(alertsService.getAlertById(0L)).thenThrow(new GeneralizedException("Invalid Alert ID", HttpStatus.BAD_REQUEST));
 
         mockMvc.perform(get("/alerts/0"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.status").value(400))
                 .andExpect(jsonPath("$.message").value("Invalid Alert ID"));
     }
 
     @Test
     void getAlertById_shouldReturnInternalServerErrorWhenUnexpectedErrorOccurs() throws Exception {
-        when(alertsService.getAlertById(5L)).thenThrow(new RuntimeException("Unexpected error"));
+        when(alertsService.getAlertById(5L))
+            .thenThrow(new GeneralizedException("Unexpected error", HttpStatus.INTERNAL_SERVER_ERROR));
 
         mockMvc.perform(get("/alerts/5"))
                 .andExpect(status().isInternalServerError())
-                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.status").value(500))
                 .andExpect(jsonPath("$.message").value("Unexpected error"));
     }
 
@@ -184,7 +191,7 @@ class AlertsControllerTest {
     @Test
     void updateAlertStatus_shouldReturnBadRequestWhenStatusEmpty() throws Exception {
         when(alertsService.updateAlertStatus(eq(5L), eq(""), eq("RESOLVED")))
-                .thenThrow(new RuntimeException("Status cannot be empty"));
+            .thenThrow(new GeneralizedException("Status cannot be empty", HttpStatus.BAD_REQUEST));
 
         mockMvc.perform(put("/alerts/5/status")
                 .contentType(APPLICATION_JSON)
@@ -195,14 +202,14 @@ class AlertsControllerTest {
                         }
                         """))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.status").value(400))
                 .andExpect(jsonPath("$.message").value("Status cannot be empty"));
     }
 
     @Test
     void updateAlertStatus_shouldReturnNotFoundWhenAlertMissing() throws Exception {
         when(alertsService.updateAlertStatus(eq(10L), eq("PENDING"), eq("RESOLVED")))
-                .thenThrow(new RuntimeException("Alert not found"));
+            .thenThrow(new GeneralizedException("Alert not found", HttpStatus.NOT_FOUND));
 
         mockMvc.perform(put("/alerts/10/status")
                 .contentType(APPLICATION_JSON)
@@ -213,14 +220,14 @@ class AlertsControllerTest {
                         }
                         """))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.status").value(404))
                 .andExpect(jsonPath("$.message").value("Alert not found"));
     }
 
     @Test
     void updateAlertStatus_shouldReturnInternalServerErrorWhenUnexpectedErrorOccurs() throws Exception {
         when(alertsService.updateAlertStatus(eq(8L), eq("PENDING"), eq("RESOLVED")))
-                .thenThrow(new RuntimeException("Unexpected error"));
+            .thenThrow(new GeneralizedException("Unexpected error", HttpStatus.INTERNAL_SERVER_ERROR));
 
         mockMvc.perform(put("/alerts/8/status")
                 .contentType(APPLICATION_JSON)
@@ -231,7 +238,7 @@ class AlertsControllerTest {
                         }
                         """))
                 .andExpect(status().isInternalServerError())
-                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.status").value(500))
                 .andExpect(jsonPath("$.message").value("Unexpected error"));
     }
 
@@ -250,31 +257,32 @@ class AlertsControllerTest {
 
     @Test
     void deleteAlert_shouldReturnNotFoundWhenAlertMissing() throws Exception {
-        when(alertsService.deleteAlert(7L)).thenThrow(new RuntimeException("Alert not found"));
+        when(alertsService.deleteAlert(7L)).thenThrow(new GeneralizedException("Alert not found", HttpStatus.NOT_FOUND));
 
         mockMvc.perform(delete("/alerts/7"))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.status").value(404))
                 .andExpect(jsonPath("$.message").value("Alert not found"));
     }
 
     @Test
     void deleteAlert_shouldReturnBadRequestWhenIdInvalid() throws Exception {
-        when(alertsService.deleteAlert(0L)).thenThrow(new RuntimeException("Invalid Alert ID"));
+        when(alertsService.deleteAlert(0L)).thenThrow(new GeneralizedException("Invalid Alert ID", HttpStatus.BAD_REQUEST));
 
         mockMvc.perform(delete("/alerts/0"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.status").value(400))
                 .andExpect(jsonPath("$.message").value("Invalid Alert ID"));
     }
 
     @Test
     void deleteAlert_shouldReturnInternalServerErrorWhenUnexpectedErrorOccurs() throws Exception {
-        when(alertsService.deleteAlert(11L)).thenThrow(new RuntimeException("Unexpected error"));
+        when(alertsService.deleteAlert(11L))
+            .thenThrow(new GeneralizedException("Unexpected error", HttpStatus.INTERNAL_SERVER_ERROR));
 
         mockMvc.perform(delete("/alerts/11"))
                 .andExpect(status().isInternalServerError())
-                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.status").value(500))
                 .andExpect(jsonPath("$.message").value("Unexpected error"));
     }
 }
