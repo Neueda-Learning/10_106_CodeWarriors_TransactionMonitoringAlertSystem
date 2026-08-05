@@ -243,6 +243,32 @@ class AlertsControllerTest {
     }
 
     @Test
+    void updateAlertStatus_shouldReturnConflictWhenClientUsesStaleStatus() throws Exception {
+        when(alertsService.updateAlertStatus(eq(8L), eq("OPEN"), eq("ACKNOWLEDGED")))
+            .thenThrow(new GeneralizedException("Alert status mismatch. Refresh data and retry.", HttpStatus.CONFLICT));
+
+        mockMvc.perform(put("/alerts/8/status")
+                .contentType(APPLICATION_JSON)
+                .content("""
+                        {
+                            "oldStatus": "OPEN",
+                            "newStatus": "ACKNOWLEDGED"
+                        }
+                        """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.status").value(409))
+                .andExpect(jsonPath("$.message").value("Alert status mismatch. Refresh data and retry."));
+    }
+
+    @Test
+    void updateAlertStatus_shouldReturnBadRequestWhenBodyMalformed() throws Exception {
+        mockMvc.perform(put("/alerts/5/status")
+                .contentType(APPLICATION_JSON)
+                .content("not-valid-json"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void deleteAlert_shouldReturnOkAndSuccessPayload() throws Exception {
         when(alertsService.deleteAlert(7L)).thenReturn(1);
 

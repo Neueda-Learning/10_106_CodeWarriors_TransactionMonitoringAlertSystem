@@ -131,4 +131,45 @@ class AlertsRepositoryTest {
 		verify(jdbcTemplate).update(sqlCaptor.capture(), eq(id));
 		assertTrue(sqlCaptor.getValue().contains("DELETE FROM alerts"));
 	}
+
+	@Test
+	void deleteAlertsByRuleId_shouldDeleteByRuleIdAndReturnAffectedRows() {
+		Long ruleId = 12L;
+		when(jdbcTemplate.update(anyString(), eq(ruleId))).thenReturn(3);
+
+		int result = alertsRepository.deleteAlertsByRuleId(ruleId);
+
+		assertEquals(3, result);
+
+		ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
+		verify(jdbcTemplate).update(sqlCaptor.capture(), eq(ruleId));
+		assertTrue(sqlCaptor.getValue().contains("WHERE rule_id = ?"));
+	}
+
+	@Test
+	void hasActiveAlertForTransactionAndRule_shouldReturnTrueWhenCountGreaterThanZero() {
+		when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class), eq(101L), eq(202L))).thenReturn(2);
+
+		boolean result = alertsRepository.hasActiveAlertForTransactionAndRule(101L, 202L);
+
+		assertTrue(result);
+	}
+
+	@Test
+	void hasActiveAlertForTransactionAndRule_shouldReturnFalseWhenCountIsZero() {
+		when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class), eq(101L), eq(202L))).thenReturn(0);
+
+		boolean result = alertsRepository.hasActiveAlertForTransactionAndRule(101L, 202L);
+
+		assertEquals(false, result);
+	}
+
+	@Test
+	void hasActiveAlertForTransactionAndRule_shouldReturnFalseWhenCountIsNull() {
+		when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class), eq(101L), eq(202L))).thenReturn(null);
+
+		boolean result = alertsRepository.hasActiveAlertForTransactionAndRule(101L, 202L);
+
+		assertEquals(false, result);
+	}
 }

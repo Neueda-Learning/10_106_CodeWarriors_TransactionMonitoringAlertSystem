@@ -70,6 +70,16 @@ class BankTransactionsControllerTests {
     }
 
     @Test
+    void getAllTransactions_returns500WhenServiceFails() throws Exception {
+        when(bankTransactionServices.getAllTransactions())
+                .thenThrow(new GeneralizedException("Unable to fetch bank transactions.", HttpStatus.INTERNAL_SERVER_ERROR));
+
+        mockMvc.perform(get("/transactions"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.status").value(500));
+    }
+
+    @Test
     void getTransactionById_returns200WhenFound() throws Exception {
         BankTransactions transaction = new BankTransactions(10L, 1L, 2L, new BigDecimal("77.77"), "USD", fixedTime, "FAILED", fixedTime);
         when(bankTransactionServices.getTransactionById(10L)).thenReturn(transaction);
@@ -191,6 +201,35 @@ class BankTransactionsControllerTests {
     }
 
     @Test
+    void updateTransaction_returns400WhenPayloadMalformed() throws Exception {
+        mockMvc.perform(put("/transactions/8")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("invalid-json"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void updateTransaction_returns400WhenIdInvalid() throws Exception {
+        when(bankTransactionServices.updateTransaction(eq(0L), any(BankTransactions.class)))
+                .thenThrow(new GeneralizedException("Transaction id must be a positive number.", HttpStatus.BAD_REQUEST));
+
+        mockMvc.perform(put("/transactions/0")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "fromAccountId": 1,
+                                  "toAccountId": 2,
+                                  "amount": 10.00,
+                                  "currency": "USD",
+                                  "transactionTime": "2026-08-01T10:00:00",
+                                  "status": "PENDING"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400));
+    }
+
+    @Test
     void deleteTransaction_returns204WhenDeleted() throws Exception {
         doNothing().when(bankTransactionServices).deleteTransaction(9L);
 
@@ -208,5 +247,26 @@ class BankTransactionsControllerTests {
         mockMvc.perform(delete("/transactions/123"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value(404));
+    }
+
+    @Test
+    void createTransaction_returns500WhenServiceFailsUnexpectedly() throws Exception {
+        when(bankTransactionServices.createTransaction(any(BankTransactions.class)))
+                .thenThrow(new GeneralizedException("Unable to create bank transaction.", HttpStatus.INTERNAL_SERVER_ERROR));
+
+        mockMvc.perform(post("/transactions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "fromAccountId": 2,
+                                  "toAccountId": 3,
+                                  "amount": 45.00,
+                                  "currency": "USD",
+                                  "transactionTime": "2026-08-01T10:00:00",
+                                  "status": "PENDING"
+                                }
+                                """))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.status").value(500));
     }
 }

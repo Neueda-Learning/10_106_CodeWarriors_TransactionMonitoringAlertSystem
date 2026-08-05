@@ -6,6 +6,7 @@ import java.util.Optional;
 
 import com.monitoring.transactions.Alerts.AlertsRepository;
 import com.monitoring.transactions.Alerts.AlertsService;
+import com.monitoring.transactions.BankTransactions.BankTransactions;
 import com.monitoring.transactions.BankTransactions.BankTransactionsRepository;
 import com.monitoring.transactions.Exception.GeneralizedException;
 import org.junit.jupiter.api.BeforeEach;
@@ -22,6 +23,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -116,6 +118,16 @@ class RulesServicesTests {
     }
 
     @Test
+    void getRuleById_throwsInternalServerErrorWhenRepositoryFails() {
+        when(rulesRepository.findById(1L)).thenThrow(new DataAccessResourceFailureException("DB error"));
+
+        assertThatThrownBy(() -> rulesServices.getRuleById(1L))
+                .isInstanceOf(GeneralizedException.class)
+                .satisfies(ex -> assertThat(((GeneralizedException) ex).getStatus())
+                        .isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR));
+    }
+
+    @Test
     void createRule_returnsSavedRuleWhenInputValid() {
         Rules input = new Rules("  New Rule  ", " velocity ", null, 15, 4, " medium ", true);
         Rules saved = new Rules(10L, "New Rule", "VELOCITY", null, 15, 4, "MEDIUM", true);
@@ -202,6 +214,64 @@ class RulesServicesTests {
     }
 
     @Test
+    void createRule_generatesAlertAndSetsTransactionPendingWhenRuleMatches() {
+        Rules input = new Rules("Large Tx", "AMOUNT_THRESHOLD", new BigDecimal("10000.00"), null, null, "HIGH", true);
+        Rules saved = new Rules(50L, "Large Tx", "AMOUNT_THRESHOLD", new BigDecimal("10000.00"), null, null, "HIGH", true);
+        BankTransactions tx = new BankTransactions();
+        tx.setId(9L);
+        tx.setStatus("COMPLETED");
+
+        when(rulesRepository.save(any(Rules.class))).thenReturn(saved);
+        when(bankTransactionsRepository.findAll()).thenReturn(List.of(tx));
+        when(ruleEngineService.matchesPersistedTransaction(eq(tx), eq(saved), any(List.class))).thenReturn(true);
+        when(alertsRepository.hasActiveAlertForTransactionAndRule(9L, 50L)).thenReturn(false);
+        when(ruleEngineService.buildAlertReason(saved)).thenReturn("Rule matched");
+        when(bankTransactionsRepository.updateStatus(9L, "PENDING")).thenReturn(true);
+
+        Rules result = rulesServices.createRule(input);
+
+        assertThat(result.getId()).isEqualTo(50L);
+        verify(alertsService).createAlert(any());
+        verify(bankTransactionsRepository).updateStatus(9L, "PENDING");
+    }
+
+    @Test
+    void createRule_doesNotCreateDuplicateAlertWhenActiveAlertAlreadyExists() {
+        Rules input = new Rules("Velocity", "VELOCITY", null, 10, 5, "MEDIUM", true);
+        Rules saved = new Rules(51L, "Velocity", "VELOCITY", null, 10, 5, "MEDIUM", true);
+        BankTransactions tx = new BankTransactions();
+        tx.setId(10L);
+
+        when(rulesRepository.save(any(Rules.class))).thenReturn(saved);
+        when(bankTransactionsRepository.findAll()).thenReturn(List.of(tx));
+        when(ruleEngineService.matchesPersistedTransaction(eq(tx), eq(saved), any(List.class))).thenReturn(true);
+        when(alertsRepository.hasActiveAlertForTransactionAndRule(10L, 51L)).thenReturn(true);
+
+        rulesServices.createRule(input);
+
+        verifyNoInteractions(alertsService);
+    }
+
+    @Test
+    void createRule_doesNotUpdateTransactionStatusWhenAlreadyPending() {
+        Rules input = new Rules("Daily", "DAILY_LIMIT", new BigDecimal("5000.00"), null, null, "HIGH", true);
+        Rules saved = new Rules(52L, "Daily", "DAILY_LIMIT", new BigDecimal("5000.00"), null, null, "HIGH", true);
+        BankTransactions tx = new BankTransactions();
+        tx.setId(11L);
+        tx.setStatus("PENDING");
+
+        when(rulesRepository.save(any(Rules.class))).thenReturn(saved);
+        when(bankTransactionsRepository.findAll()).thenReturn(List.of(tx));
+        when(ruleEngineService.matchesPersistedTransaction(eq(tx), eq(saved), any(List.class))).thenReturn(true);
+        when(alertsRepository.hasActiveAlertForTransactionAndRule(11L, 52L)).thenReturn(false);
+        when(ruleEngineService.buildAlertReason(saved)).thenReturn("Daily limit exceeded");
+
+        rulesServices.createRule(input);
+
+        verify(alertsService).createAlert(any());
+    }
+
+    @Test
     void updateRule_returnsUpdatedRuleWhenSuccessful() {
         Rules input = new Rules("Updated", "velocity", null, 20, 10, "medium", true);
         Rules updated = new Rules(2L, "Updated", "VELOCITY", null, 20, 10, "MEDIUM", true);
@@ -236,6 +306,17 @@ class RulesServicesTests {
     }
 
     @Test
+    void updateRule_throwsInternalServerErrorWhenRepositoryFails() {
+        Rules input = new Rules("Updated", "VELOCITY", null, 20, 10, "MEDIUM", true);
+        when(rulesRepository.update(eq(2L), any(Rules.class))).thenThrow(new DataAccessResourceFailureException("DB error"));
+
+        assertThatThrownBy(() -> rulesServices.updateRule(2L, input))
+                .isInstanceOf(GeneralizedException.class)
+                .satisfies(ex -> assertThat(((GeneralizedException) ex).getStatus())
+                        .isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR));
+    }
+
+    @Test
     void deleteRule_completesWhenRuleExists() {
         when(rulesRepository.deleteById(7L)).thenReturn(true);
 
@@ -266,6 +347,16 @@ class RulesServicesTests {
     @Test
     void deleteRule_throwsInternalServerErrorWhenRepositoryFails() {
         when(rulesRepository.deleteById(8L)).thenThrow(new DataAccessResourceFailureException("DB error"));
+
+        assertThatThrownBy(() -> rulesServices.deleteRule(8L))
+                .isInstanceOf(GeneralizedException.class)
+                .satisfies(ex -> assertThat(((GeneralizedException) ex).getStatus())
+                        .isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR));
+    }
+
+    @Test
+    void deleteRule_throwsInternalServerErrorWhenAlertCleanupFails() {
+        when(alertsRepository.deleteAlertsByRuleId(8L)).thenThrow(new DataAccessResourceFailureException("DB error"));
 
         assertThatThrownBy(() -> rulesServices.deleteRule(8L))
                 .isInstanceOf(GeneralizedException.class)

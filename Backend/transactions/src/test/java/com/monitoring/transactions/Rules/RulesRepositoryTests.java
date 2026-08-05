@@ -110,6 +110,23 @@ class RulesRepositoryTests {
     }
 
     @Test
+    void save_returnsInputRuleWhenGeneratedIdCannotBeReloaded() {
+        Rules input = new Rules("Rule A", "AMOUNT_THRESHOLD", new BigDecimal("2000.00"), null, null, "HIGH", true);
+
+        doAnswer(invocation -> {
+            KeyHolder keyHolder = invocation.getArgument(1);
+            ((GeneratedKeyHolder) keyHolder).getKeyList().add(java.util.Map.of("GENERATED_KEY", 44L));
+            return 1;
+        }).when(jdbcTemplate).update(any(PreparedStatementCreator.class), any(KeyHolder.class));
+
+        when(jdbcTemplate.query(anyString(), ArgumentMatchers.<RowMapper<Rules>>any(), eq(44L))).thenReturn(List.of());
+
+        Rules result = rulesRepository.save(input);
+
+        assertThat(result).isSameAs(input);
+    }
+
+    @Test
     void update_returnsTrueWhenRecordUpdated() {
         Rules input = new Rules("Rule B", "VELOCITY", null, 20, 10, "MEDIUM", true);
         when(jdbcTemplate.update(anyString(),
