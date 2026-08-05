@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -33,8 +34,10 @@ public class AlertsController {
 	}
 
 	@GetMapping
-	public ResponseEntity<List<Alerts>> getAllAlerts() {
-		List<Alerts> alerts = alertsService.getAllAlerts();
+	public ResponseEntity<List<Alerts>> getAllAlerts(
+			@RequestParam(required = false) String status,
+			@RequestParam(required = false) String severity) {
+		List<Alerts> alerts = alertsService.getAllAlerts(status, severity);
 		return ResponseEntity.ok(alerts);
 	}
 

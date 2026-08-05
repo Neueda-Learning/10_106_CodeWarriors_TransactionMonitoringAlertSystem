@@ -36,6 +36,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const txAmountFilter = document.getElementById('tx-amount-filter');
     const alertsTableBody = document.getElementById('alerts-table-body');
     const alertSearchInput = document.getElementById('alert-search');
+    const alertSeverityFilter = document.getElementById('alert-severity-filter');
     const alertStatusFilter = document.getElementById('alert-status-filter');
 
     let txStageChartInstance = null;
@@ -267,17 +268,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderAlerts() {
-        if (!alertsTableBody || !alertSearchInput || !alertStatusFilter) {
+        if (!alertsTableBody || !alertSearchInput || !alertStatusFilter || !alertSeverityFilter) {
             return;
         }
 
         const searchTerm = alertSearchInput.value.trim().toLowerCase();
+        const severityFilter = alertSeverityFilter.value;
         const statusFilter = alertStatusFilter.value;
 
         const filtered = alerts.filter(alert => {
             const matchesSearch = String(alert.id).includes(searchTerm) || String(alert.transactionId).includes(searchTerm);
+            const matchesSeverity = severityFilter === 'ALL' || alert.severity === severityFilter;
             const matchesStatus = statusFilter === 'ALL' || alert.newStatus === statusFilter;
-            return matchesSearch && matchesStatus;
+            return matchesSearch && matchesSeverity && matchesStatus;
         });
 
         alertsTableBody.innerHTML = '';
@@ -414,6 +417,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (alertSearchInput) {
         alertSearchInput.addEventListener('input', renderAlerts);
+    }
+    if (alertSeverityFilter) {
+        alertSeverityFilter.addEventListener('change', renderAlerts);
     }
     if (alertStatusFilter) {
         alertStatusFilter.addEventListener('change', renderAlerts);
