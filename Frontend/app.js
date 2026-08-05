@@ -299,6 +299,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td><span class="badge bg-${severityColor(alert.severity)}">${alert.severity || 'N/A'}</span></td>
                 <td><span class="badge bg-${statusColor(currentStatus)}">${currentStatus}</span></td>
                 <td>
+                    <button class="btn btn-sm btn-outline-dark me-1" data-action="view" data-id="${alert.id}" title="View Details"><i class="bi bi-eye"></i></button>
                     <button class="btn btn-sm btn-outline-primary me-1" data-action="ack" data-id="${alert.id}" ${canAcknowledge ? '' : 'disabled'} title="Acknowledge"><i class="bi bi-check-circle"></i></button>
                     <button class="btn btn-sm btn-outline-info me-1" data-action="investigate" data-id="${alert.id}" ${canInvestigate ? '' : 'disabled'} title="Investigate"><i class="bi bi-search"></i></button>
                     <button class="btn btn-sm btn-outline-success me-1" data-action="close" data-id="${alert.id}" ${canResolve ? '' : 'disabled'} title="Close"><i class="bi bi-shield-check"></i></button>
@@ -346,6 +347,60 @@ document.addEventListener('DOMContentLoaded', () => {
 
         await loadDashboardData();
     }
+    
+    function viewAlertDetails(alertId) {
+        const alert = alerts.find(item => item.id === alertId);
+        if (!alert) return;
+        
+        const tx = transactions.find(item => item.id === alert.transactionId);
+        
+        const content = document.getElementById('alert-view-content');
+        if (!content) return;
+        
+        const statusBadge = `<span class="badge bg-${statusColor(alert.newStatus || 'OPEN')}">${alert.newStatus || 'OPEN'}</span>`;
+        const severityBadge = `<span class="badge bg-${severityColor(alert.severity)}">${alert.severity || 'N/A'}</span>`;
+        
+        let txHtml = '<p class="text-muted">Transaction details not available.</p>';
+        if (tx) {
+            txHtml = `
+                <table class="table table-bordered mb-0">
+                    <tbody>
+                        <tr><th class="bg-light" style="width: 30%">Transaction ID</th><td>#${tx.id}</td></tr>
+                        <tr><th class="bg-light">Amount</th><td class="fw-bold">${formatMoney(tx.amount)} ${tx.currency || 'USD'}</td></tr>
+                        <tr><th class="bg-light">From Account</th><td>ACC-${tx.fromAccountId}</td></tr>
+                        <tr><th class="bg-light">To Account</th><td>ACC-${tx.toAccountId}</td></tr>
+                        <tr><th class="bg-light">Timestamp</th><td>${formatDateTime(tx.transactionTime)}</td></tr>
+                        <tr><th class="bg-light">Status</th><td><span class="badge bg-${statusColor(tx.status)}">${tx.status}</span></td></tr>
+                    </tbody>
+                </table>
+            `;
+        }
+        
+        content.innerHTML = `
+            <div class="row g-4">
+                <div class="col-md-12">
+                    <h5 class="border-bottom pb-2 mb-3">Alert Information</h5>
+                    <table class="table table-bordered mb-0">
+                        <tbody>
+                            <tr><th class="bg-light" style="width: 30%">Alert ID</th><td>ALT-${alert.id}</td></tr>
+                            <tr><th class="bg-light">Rule ID</th><td>${alert.ruleId}</td></tr>
+                            <tr><th class="bg-light">Severity</th><td>${severityBadge}</td></tr>
+                            <tr><th class="bg-light">Status</th><td>${statusBadge}</td></tr>
+                            <tr><th class="bg-light">Reason</th><td>${alert.alertReason || '-'}</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="col-md-12">
+                    <h5 class="border-bottom pb-2 mb-3">Triggering Transaction</h5>
+                    ${txHtml}
+                </div>
+            </div>
+        `;
+        
+        const modalEl = document.getElementById('alertViewModal');
+        const modal = new bootstrap.Modal(modalEl);
+        modal.show();
+    }
 
     if (txSearchInput) {
         txSearchInput.addEventListener('input', renderTransactions);
@@ -372,6 +427,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const id = Number(button.getAttribute('data-id'));
             const action = button.getAttribute('data-action');
+
+            if (action === 'view') {
+                viewAlertDetails(id);
+                return;
+            }
 
             try {
                 if (action === 'ack') {

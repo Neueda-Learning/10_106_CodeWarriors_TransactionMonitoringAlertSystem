@@ -62,7 +62,13 @@ public class BankTransactionServices {
 		validateTransaction(transaction);
 		try {
 			List<Rules> triggeredRules = ruleEngineService.evaluateIncomingTransaction(transaction);
-			String finalStatus = triggeredRules.isEmpty() ? "COMPLETED" : "PENDING";
+			
+			String finalStatus = transaction.getStatus();
+			if (!"FAILED".equals(finalStatus) && !triggeredRules.isEmpty()) {
+				finalStatus = "PENDING";
+			} else if (finalStatus == null) {
+				finalStatus = "COMPLETED";
+			}
 
 			BankTransactions newTransaction = new BankTransactions(
 				transaction.getFromAccountId(),
