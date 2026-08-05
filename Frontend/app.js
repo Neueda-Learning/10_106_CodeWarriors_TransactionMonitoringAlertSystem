@@ -1,90 +1,141 @@
 document.addEventListener('DOMContentLoaded', () => {
-    
-    // Simple SPA Navigation Logic
+    const API_BASE_URL = window.localStorage.getItem('apiBaseUrl') || 'http://localhost:8085';
+
+    let transactions = [];
+    let alerts = [];
+
     const navLinks = document.querySelectorAll('.nav-link');
     const viewSections = document.querySelectorAll('.view-section');
 
     navLinks.forEach(link => {
-        link.addEventListener('click', (e) => {
-            e.preventDefault();
-            
-            // Remove active class from all nav links
+        link.addEventListener('click', event => {
+            event.preventDefault();
             navLinks.forEach(nav => nav.classList.remove('active'));
-            // Add active class to clicked link
-            e.target.classList.add('active');
+            link.classList.add('active');
 
-            // Hide all sections
             viewSections.forEach(section => {
                 section.classList.add('d-none');
                 section.classList.remove('active');
             });
 
-            // Show target section
-            const targetId = e.target.getAttribute('data-target');
-            if (targetId) {
-                const targetElement = document.getElementById(targetId);
-                if (targetElement) {
-                    targetElement.classList.remove('d-none');
-                    targetElement.classList.add('active');
-                }
+            const targetId = link.getAttribute('data-target');
+            if (!targetId) {
+                return;
+            }
+            const target = document.getElementById(targetId);
+            if (target) {
+                target.classList.remove('d-none');
+                target.classList.add('active');
             }
         });
     });
 
-    // --- Dashboard View Logic ---
+    const txTableBody = document.getElementById('transactions-table-body');
+    const txSearchInput = document.getElementById('tx-search');
+    const txStageFilter = document.getElementById('tx-stage-filter');
+    const txAmountFilter = document.getElementById('tx-amount-filter');
+    const alertsTableBody = document.getElementById('alerts-table-body');
+    const alertSearchInput = document.getElementById('alert-search');
+    const alertStatusFilter = document.getElementById('alert-status-filter');
+
     let txStageChartInstance = null;
     let txVolumeChartInstance = null;
 
-    function updateDashboard() {
-        const totalTx = transactions ? transactions.length : 0;
-        const activeAlerts = alerts.filter(a => a.newStatus !== 'CLOSED' && a.newStatus !== 'DISMISSED').length;
-        const highSeverity = alerts.filter(a => a.severity === 'HIGH' && a.newStatus !== 'CLOSED' && a.newStatus !== 'DISMISSED').length;
-        
-        document.getElementById('summary-total-tx').textContent = totalTx;
-        document.getElementById('summary-active-alerts').textContent = activeAlerts;
-        document.getElementById('summary-high-severity').textContent = highSeverity;
-        document.getElementById('nav-alert-badge').textContent = activeAlerts;
-        
-        const activityStream = document.getElementById('dashboard-activity-stream');
-        activityStream.innerHTML = '';
-        
-        if (!transactions || transactions.length === 0) return;
-        
-        // Take latest 5 transactions for activity stream (backend returns descending)
-        const recentTx = transactions.slice(0, 5);
-        recentTx.forEach(tx => {
-            const li = document.createElement('li');
-            li.className = 'list-group-item d-flex justify-content-between align-items-center py-3 px-4';
-            const statusColor = tx.status === 'COMPLETED' ? 'success' : (tx.status === 'FAILED' ? 'danger' : 'warning');
-            
-            li.innerHTML = `
-                <div>
-                    <span class="fw-bold">Transaction #${tx.id}</span>
-                    <span class="text-muted ms-2 d-block d-sm-inline">from ACC-${tx.fromAccountId} to ACC-${tx.toAccountId}</span>
-                    <div class="small text-muted mt-1"><i class="bi bi-clock"></i> ${Array.isArray(tx.transactionTime) ? tx.transactionTime[0]+'-'+String(tx.transactionTime[1]).padStart(2,'0')+'-'+String(tx.transactionTime[2]).padStart(2,'0') + ' ' + String(tx.transactionTime[3]).padStart(2,'0')+':'+String(tx.transactionTime[4]).padStart(2,'0') : String(tx.transactionTime).replace('T', ' ')}</div>
-                </div>
-                <div class="text-end">
-                    <span class="badge bg-${statusColor} mb-1 d-block">${tx.status}</span>
-                    <span class="fw-bold fs-5">$${tx.amount.toFixed(2)}</span>
-                </div>
-            `;
-            activityStream.appendChild(li);
-        });
+    function toNumber(value) {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : 0;
+    }
 
-        // Initialize Charts
-        renderCharts();
+    function formatMoney(value) {
+        return `$${toNumber(value).toFixed(2)}`;
+    }
+
+    function formatDateTime(value) {
+        if (!value) {
+            return '-';
+        }
+        if (Array.isArray(value)) {
+            const year = value[0];
+            const month = String(value[1]).padStart(2, '0');
+            const day = String(value[2]).padStart(2, '0');
+            const hour = String(value[3] || 0).padStart(2, '0');
+            const minute = String(value[4] || 0).padStart(2, '0');
+            return `${year}-${month}-${day} ${hour}:${minute}`;
+        }
+        return String(value).replace('T', ' ').replace('Z', '');
+    }
+
+    function formatDateOnly(value) {
+        const dateTime = formatDateTime(value);
+        return dateTime === '-' ? '-' : dateTime.substring(0, 10);
+    }
+
+    function isAlertActive(alert) {
+        return alert.newStatus !== 'CLOSED' && alert.newStatus !== 'DISMISSED';
+    }
+
+    function severityColor(severity) {
+        if (severity === 'HIGH') {
+            return 'danger';
+        }
+        if (severity === 'MEDIUM') {
+            return 'warning';
+        }
+        if (severity === 'LOW') {
+            return 'info';
+        }
+        return 'secondary';
+    }
+
+    function statusColor(status) {
+        if (status === 'CLOSED' || status === 'DISMISSED') {
+            return 'secondary';
+        }
+        if (status === 'OPEN') {
+            return 'danger';
+        }
+        if (status === 'ACKNOWLEDGED') {
+            return 'warning';
+        }
+        if (status === 'INVESTIGATING') {
+            return 'info';
+        }
+        if (status === 'COMPLETED') {
+            return 'success';
+        }
+        if (status === 'FAILED') {
+            return 'danger';
+        }
+        if (status === 'PENDING') {
+            return 'warning';
+        }
+        return 'secondary';
+    }
+
+    async function fetchJson(url, options) {
+        const response = await fetch(url, options);
+        if (!response.ok) {
+            throw new Error(`Request failed (${response.status})`);
+        }
+        if (response.status === 204) {
+            return null;
+        }
+        return response.json();
     }
 
     function renderCharts() {
-        // Prepare Data for Stage Chart
         const statusCounts = { COMPLETED: 0, PENDING: 0, FAILED: 0 };
         transactions.forEach(tx => {
-            if (statusCounts[tx.status] !== undefined) statusCounts[tx.status]++;
+            if (statusCounts[tx.status] !== undefined) {
+                statusCounts[tx.status] += 1;
+            }
         });
 
         const stageCtx = document.getElementById('txStageChart');
         if (stageCtx) {
-            if (txStageChartInstance) txStageChartInstance.destroy();
+            if (txStageChartInstance) {
+                txStageChartInstance.destroy();
+            }
             txStageChartInstance = new Chart(stageCtx, {
                 type: 'doughnut',
                 data: {
@@ -98,33 +149,31 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
-        // Prepare Dynamic Data for Volume Chart
         const volumeByDate = {};
         transactions.forEach(tx => {
-            let dateStr = "Unknown";
-            if (Array.isArray(tx.transactionTime)) {
-                dateStr = tx.transactionTime[0] + "-" + String(tx.transactionTime[1]).padStart(2, '0') + "-" + String(tx.transactionTime[2]).padStart(2, '0');
-            } else if (tx.transactionTime) {
-                dateStr = String(tx.transactionTime).substring(0, 10);
+            const dateKey = formatDateOnly(tx.transactionTime);
+            if (!volumeByDate[dateKey]) {
+                volumeByDate[dateKey] = 0;
             }
-            if (!volumeByDate[dateStr]) volumeByDate[dateStr] = 0;
-            volumeByDate[dateStr] += tx.amount;
+            volumeByDate[dateKey] += toNumber(tx.amount);
         });
-        
-        const sortedDates = Object.keys(volumeByDate).sort().slice(-7); // Last 7 days
-        const chartLabels = sortedDates.length > 0 ? sortedDates : ['No Data'];
-        const chartData = sortedDates.length > 0 ? sortedDates.map(d => volumeByDate[d]) : [0];
+
+        const sortedDates = Object.keys(volumeByDate).sort().slice(-7);
+        const labels = sortedDates.length > 0 ? sortedDates : ['No Data'];
+        const values = sortedDates.length > 0 ? sortedDates.map(key => volumeByDate[key]) : [0];
 
         const volumeCtx = document.getElementById('txVolumeChart');
         if (volumeCtx) {
-            if (txVolumeChartInstance) txVolumeChartInstance.destroy();
+            if (txVolumeChartInstance) {
+                txVolumeChartInstance.destroy();
+            }
             txVolumeChartInstance = new Chart(volumeCtx, {
                 type: 'bar',
                 data: {
-                    labels: chartLabels,
+                    labels,
                     datasets: [{
                         label: 'Volume ($)',
-                        data: chartData,
+                        data: values,
                         backgroundColor: 'rgba(13, 110, 253, 0.5)',
                         borderColor: '#0d6efd',
                         borderWidth: 1
@@ -135,164 +184,238 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- Transactions List Logic ---
-    const txTableBody = document.getElementById('transactions-table-body');
-    const txSearchInput = document.getElementById('tx-search');
-    const txStageFilter = document.getElementById('tx-stage-filter');
-    const txAmountFilter = document.getElementById('tx-amount-filter');
+    function updateDashboard() {
+        const totalTx = transactions.length;
+        const activeAlerts = alerts.filter(isAlertActive).length;
+        const highSeverity = alerts.filter(alert => isAlertActive(alert) && alert.severity === 'HIGH').length;
+
+        document.getElementById('summary-total-tx').textContent = totalTx;
+        document.getElementById('summary-active-alerts').textContent = activeAlerts;
+        document.getElementById('summary-high-severity').textContent = highSeverity;
+        document.getElementById('nav-alert-badge').textContent = activeAlerts;
+
+        const activityStream = document.getElementById('dashboard-activity-stream');
+        activityStream.innerHTML = '';
+
+        transactions.slice(0, 5).forEach(tx => {
+            const li = document.createElement('li');
+            li.className = 'list-group-item d-flex justify-content-between align-items-center py-3 px-4';
+            li.innerHTML = `
+                <div>
+                    <span class="fw-bold">Transaction #${tx.id}</span>
+                    <span class="text-muted ms-2 d-block d-sm-inline">from ACC-${tx.fromAccountId} to ACC-${tx.toAccountId}</span>
+                    <div class="small text-muted mt-1"><i class="bi bi-clock"></i> ${formatDateTime(tx.transactionTime)}</div>
+                </div>
+                <div class="text-end">
+                    <span class="badge bg-${statusColor(tx.status)} mb-1 d-block">${tx.status}</span>
+                    <span class="fw-bold fs-5">${formatMoney(tx.amount)}</span>
+                </div>
+            `;
+            activityStream.appendChild(li);
+        });
+
+        renderCharts();
+    }
 
     function renderTransactions() {
-        if (!txTableBody) return;
-        
-        const searchTerm = txSearchInput ? txSearchInput.value.toLowerCase() : '';
+        if (!txTableBody) {
+            return;
+        }
+        const searchTerm = txSearchInput ? txSearchInput.value.trim().toLowerCase() : '';
         const stageFilter = txStageFilter ? txStageFilter.value : 'ALL';
         const amountFilter = txAmountFilter ? txAmountFilter.value : 'ALL';
-        
-        txTableBody.innerHTML = '';
-        
-        const filteredTx = transactions.filter(tx => {
-            const matchesSearch = tx.id.toString().includes(searchTerm) || 
-                                  tx.fromAccountId.toString().includes(searchTerm) || 
-                                  tx.toAccountId.toString().includes(searchTerm);
-                                  
-            const matchesStage = stageFilter === 'ALL' || tx.status === stageFilter;
-            
+
+        const filtered = transactions.filter(tx => {
+            const txId = String(tx.id || '');
+            const from = String(tx.fromAccountId || '');
+            const to = String(tx.toAccountId || '');
+            const amount = toNumber(tx.amount);
+
+            const matchesSearch = txId.includes(searchTerm) || from.includes(searchTerm) || to.includes(searchTerm);
+            const matchesStatus = stageFilter === 'ALL' || tx.status === stageFilter;
+
             let matchesAmount = true;
-            if (amountFilter === '0-500') matchesAmount = tx.amount < 500;
-            else if (amountFilter === '500-2000') matchesAmount = tx.amount >= 500 && tx.amount <= 2000;
-            else if (amountFilter === '2000+') matchesAmount = tx.amount > 2000;
-            
-            return matchesSearch && matchesStage && matchesAmount;
+            if (amountFilter === '0-500') {
+                matchesAmount = amount < 500;
+            } else if (amountFilter === '500-2000') {
+                matchesAmount = amount >= 500 && amount <= 2000;
+            } else if (amountFilter === '2000+') {
+                matchesAmount = amount > 2000;
+            }
+
+            return matchesSearch && matchesStatus && matchesAmount;
         });
-        
-        if (filteredTx.length === 0) {
+
+        txTableBody.innerHTML = '';
+        if (filtered.length === 0) {
             txTableBody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No transactions found matching your criteria.</td></tr>';
             return;
         }
 
-        filteredTx.forEach(tx => {
+        filtered.forEach(tx => {
             const tr = document.createElement('tr');
-            const statusColor = tx.status === 'COMPLETED' ? 'success' : (tx.status === 'FAILED' ? 'danger' : 'warning');
-            
             tr.innerHTML = `
                 <td class="fw-bold">#${tx.id}</td>
                 <td>ACC-${tx.fromAccountId}</td>
                 <td>ACC-${tx.toAccountId}</td>
-                <td class="fw-bold">$${tx.amount.toFixed(2)}</td>
-                <td><small class="text-muted">${Array.isArray(tx.transactionTime) ? tx.transactionTime[0]+'-'+String(tx.transactionTime[1]).padStart(2,'0')+'-'+String(tx.transactionTime[2]).padStart(2,'0') : String(tx.transactionTime).substring(0,10)}</small></td>
-                <td><span class="badge bg-${statusColor}">${tx.status}</span></td>
+                <td class="fw-bold">${formatMoney(tx.amount)}</td>
+                <td><small class="text-muted">${formatDateOnly(tx.transactionTime)}</small></td>
+                <td><span class="badge bg-${statusColor(tx.status)}">${tx.status}</span></td>
             `;
             txTableBody.appendChild(tr);
         });
     }
 
-    if (txSearchInput) txSearchInput.addEventListener('input', renderTransactions);
-    if (txStageFilter) txStageFilter.addEventListener('change', renderTransactions);
-    if (txAmountFilter) txAmountFilter.addEventListener('change', renderTransactions);
-
-    // --- Database API Connection Logic ---
-    async function initializeData() {
-        try {
-            // Attempt to fetch live data from the Database via Spring Boot API
-            const response = await fetch('http://localhost:8085/api/transactions');
-            if (response.ok) {
-                transactions = await response.json();
-                console.log("Successfully loaded transactions from Database!");
-            } else {
-                console.warn("Backend API returned an error, falling back to mock data.");
-            }
-        } catch (error) {
-            console.warn("Backend API not reachable (Is Spring Boot running?), falling back to mock data.");
-        } finally {
-            // Render UI with either Live DB data or Mock fallback data
-            updateDashboard();
-            if (txTableBody) renderTransactions();
-        }
-    }
-
-    // Start initialization
-    initializeData();
-    // Auto-refresh every 60 seconds for live dashboard
-    setInterval(initializeData, 60000);
-
-    // --- Alerts List Logic ---
-    let alerts = [
-        { id: 101, transactionId: 2, ruleId: 1, alertReason: 'High Velocity Check', severity: 'MEDIUM', oldStatus: 'NONE', newStatus: 'OPEN' },
-        { id: 102, transactionId: 5, ruleId: 2, alertReason: 'Large Transaction', severity: 'HIGH', oldStatus: 'NONE', newStatus: 'ACKNOWLEDGED' },
-        { id: 103, transactionId: 9, ruleId: 1, alertReason: 'High Velocity Check', severity: 'MEDIUM', oldStatus: 'NONE', newStatus: 'OPEN' },
-        { id: 104, transactionId: 12, ruleId: 3, alertReason: 'Multiple Countries in 24h', severity: 'HIGH', oldStatus: 'OPEN', newStatus: 'INVESTIGATING' },
-        { id: 105, transactionId: 18, ruleId: 4, alertReason: 'Unusual Time Check', severity: 'LOW', oldStatus: 'NONE', newStatus: 'OPEN' },
-        { id: 106, transactionId: 21, ruleId: 2, alertReason: 'Large Transaction', severity: 'HIGH', oldStatus: 'NONE', newStatus: 'OPEN' },
-        { id: 107, transactionId: 33, ruleId: 1, alertReason: 'High Velocity Check', severity: 'MEDIUM', oldStatus: 'OPEN', newStatus: 'CLOSED' },
-        { id: 108, transactionId: 45, ruleId: 5, alertReason: 'Structuring Detection', severity: 'HIGH', oldStatus: 'NONE', newStatus: 'OPEN' },
-        { id: 109, transactionId: 67, ruleId: 1, alertReason: 'High Velocity Check', severity: 'MEDIUM', oldStatus: 'NONE', newStatus: 'ACKNOWLEDGED' },
-        { id: 110, transactionId: 89, ruleId: 2, alertReason: 'Large Transaction', severity: 'HIGH', oldStatus: 'INVESTIGATING', newStatus: 'CLOSED' },
-        { id: 111, transactionId: 92, ruleId: 4, alertReason: 'Unusual Time Check', severity: 'LOW', oldStatus: 'NONE', newStatus: 'OPEN' },
-        { id: 112, transactionId: 112, ruleId: 3, alertReason: 'Multiple Countries in 24h', severity: 'HIGH', oldStatus: 'NONE', newStatus: 'OPEN' },
-        { id: 113, transactionId: 145, ruleId: 5, alertReason: 'Structuring Detection', severity: 'HIGH', oldStatus: 'NONE', newStatus: 'INVESTIGATING' },
-        { id: 114, transactionId: 178, ruleId: 1, alertReason: 'High Velocity Check', severity: 'MEDIUM', oldStatus: 'NONE', newStatus: 'OPEN' },
-        { id: 115, transactionId: 199, ruleId: 2, alertReason: 'Large Transaction', severity: 'HIGH', oldStatus: 'NONE', newStatus: 'OPEN' }
-    ];
-
-    const alertsTableBody = document.getElementById('alerts-table-body');
-    const alertSearchInput = document.getElementById('alert-search');
-    const alertStatusFilter = document.getElementById('alert-status-filter');
-
     function renderAlerts() {
-        if (!alertsTableBody) return;
-        
-        const searchTerm = alertSearchInput.value.toLowerCase();
+        if (!alertsTableBody || !alertSearchInput || !alertStatusFilter) {
+            return;
+        }
+
+        const searchTerm = alertSearchInput.value.trim().toLowerCase();
         const statusFilter = alertStatusFilter.value;
-        
-        alertsTableBody.innerHTML = '';
-        
-        const filteredAlerts = alerts.filter(al => {
-            const matchesSearch = al.id.toString().includes(searchTerm) || 
-                                  al.transactionId.toString().includes(searchTerm);
-            const matchesStatus = statusFilter === 'ALL' || al.newStatus === statusFilter;
-            
+
+        const filtered = alerts.filter(alert => {
+            const matchesSearch = String(alert.id).includes(searchTerm) || String(alert.transactionId).includes(searchTerm);
+            const matchesStatus = statusFilter === 'ALL' || alert.newStatus === statusFilter;
             return matchesSearch && matchesStatus;
         });
-        
-        if (filteredAlerts.length === 0) {
+
+        alertsTableBody.innerHTML = '';
+        if (filtered.length === 0) {
             alertsTableBody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No alerts found matching your criteria.</td></tr>';
             return;
         }
 
-        filteredAlerts.forEach(al => {
+        filtered.forEach(alert => {
             const tr = document.createElement('tr');
-            
-            let severityColor = 'secondary';
-            if (al.severity === 'HIGH') severityColor = 'danger';
-            else if (al.severity === 'MEDIUM') severityColor = 'warning';
-            else if (al.severity === 'LOW') severityColor = 'info';
-
-            let statusColor = 'primary';
-            if (al.newStatus === 'CLOSED' || al.newStatus === 'DISMISSED') statusColor = 'secondary';
-            else if (al.newStatus === 'OPEN') statusColor = 'danger';
-            else if (al.newStatus === 'ACKNOWLEDGED') statusColor = 'warning';
-            else if (al.newStatus === 'INVESTIGATING') statusColor = 'info';
-            
+            const currentStatus = alert.newStatus || 'OPEN';
+            const canAcknowledge = currentStatus === 'OPEN';
+            const canInvestigate = currentStatus === 'ACKNOWLEDGED';
+            const canResolve = currentStatus === 'INVESTIGATING';
             tr.innerHTML = `
-                <td class="fw-bold">ALT-${al.id}</td>
-                <td><a href="#" class="text-decoration-none">#${al.transactionId}</a></td>
-                <td>${al.alertReason}</td>
-                <td><span class="badge bg-${severityColor}">${al.severity}</span></td>
-                <td><span class="badge bg-${statusColor}">${al.newStatus}</span></td>
+                <td class="fw-bold">ALT-${alert.id}</td>
+                <td>#${alert.transactionId}</td>
+                <td>${alert.alertReason || '-'}</td>
+                <td><span class="badge bg-${severityColor(alert.severity)}">${alert.severity || 'N/A'}</span></td>
+                <td><span class="badge bg-${statusColor(currentStatus)}">${currentStatus}</span></td>
                 <td>
-                    <button class="btn btn-sm btn-outline-primary me-1" title="Acknowledge"><i class="bi bi-check-circle"></i></button>
-                    <button class="btn btn-sm btn-outline-secondary" title="Dismiss"><i class="bi bi-x-circle"></i></button>
+                    <button class="btn btn-sm btn-outline-primary me-1" data-action="ack" data-id="${alert.id}" ${canAcknowledge ? '' : 'disabled'} title="Acknowledge"><i class="bi bi-check-circle"></i></button>
+                    <button class="btn btn-sm btn-outline-info me-1" data-action="investigate" data-id="${alert.id}" ${canInvestigate ? '' : 'disabled'} title="Investigate"><i class="bi bi-search"></i></button>
+                    <button class="btn btn-sm btn-outline-success me-1" data-action="close" data-id="${alert.id}" ${canResolve ? '' : 'disabled'} title="Close"><i class="bi bi-shield-check"></i></button>
+                    <button class="btn btn-sm btn-outline-secondary" data-action="dismiss" data-id="${alert.id}" ${canResolve ? '' : 'disabled'} title="Dismiss"><i class="bi bi-x-circle"></i></button>
                 </td>
             `;
             alertsTableBody.appendChild(tr);
         });
     }
 
-    if (alertSearchInput && alertStatusFilter) {
-        alertSearchInput.addEventListener('input', renderAlerts);
-        alertStatusFilter.addEventListener('change', renderAlerts);
-        renderAlerts(); // Initial render
+    async function loadDashboardData() {
+        const transactionsPromise = fetchJson(`${API_BASE_URL}/transactions`);
+        const alertsPromise = fetchJson(`${API_BASE_URL}/alerts`);
+
+        const [transactionsResult, alertsResult] = await Promise.allSettled([transactionsPromise, alertsPromise]);
+
+        transactions = transactionsResult.status === 'fulfilled' && Array.isArray(transactionsResult.value)
+            ? transactionsResult.value
+            : [];
+        alerts = alertsResult.status === 'fulfilled' && Array.isArray(alertsResult.value)
+            ? alertsResult.value
+            : [];
+
+        updateDashboard();
+        renderTransactions();
+        renderAlerts();
     }
 
-    console.log("Frontend Skeleton initialized successfully.");
+    async function updateAlertStatus(alertId, targetStatus) {
+        const alert = alerts.find(item => item.id === alertId);
+        if (!alert) {
+            return;
+        }
+
+        const payload = {
+            oldStatus: alert.newStatus || 'OPEN',
+            newStatus: targetStatus
+        };
+
+        await fetchJson(`${API_BASE_URL}/alerts/${alertId}/status`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        await loadDashboardData();
+    }
+
+    if (txSearchInput) {
+        txSearchInput.addEventListener('input', renderTransactions);
+    }
+    if (txStageFilter) {
+        txStageFilter.addEventListener('change', renderTransactions);
+    }
+    if (txAmountFilter) {
+        txAmountFilter.addEventListener('change', renderTransactions);
+    }
+
+    if (alertSearchInput) {
+        alertSearchInput.addEventListener('input', renderAlerts);
+    }
+    if (alertStatusFilter) {
+        alertStatusFilter.addEventListener('change', renderAlerts);
+    }
+    if (alertsTableBody) {
+        alertsTableBody.addEventListener('click', async event => {
+            const button = event.target.closest('button[data-action]');
+            if (!button) {
+                return;
+            }
+
+            const id = Number(button.getAttribute('data-id'));
+            const action = button.getAttribute('data-action');
+
+            try {
+                if (action === 'ack') {
+                    await updateAlertStatus(id, 'ACKNOWLEDGED');
+                }
+                if (action === 'investigate') {
+                    await updateAlertStatus(id, 'INVESTIGATING');
+                }
+                if (action === 'close') {
+                    await updateAlertStatus(id, 'CLOSED');
+                }
+                if (action === 'dismiss') {
+                    await updateAlertStatus(id, 'DISMISSED');
+                }
+            } catch (error) {
+                window.alert('Could not update alert status. Check backend logs and try again.');
+            }
+        });
+    }
+
+    loadDashboardData().catch(() => {
+        updateDashboard();
+        renderTransactions();
+        renderAlerts();
+    });
+
+    // Expose refresh for the rules module and listen for rule-change signals.
+    window.loadDashboardData = loadDashboardData;
+    window.addEventListener('rules:changed', () => {
+        loadDashboardData().catch(() => {
+            // Keep current data in UI when refresh fails.
+        });
+    });
+    window.addEventListener('storage', event => {
+        if (event.key === 'rulesUpdatedAt') {
+            loadDashboardData().catch(() => {
+                // Keep current data in UI when refresh fails.
+            });
+        }
+    });
+
+    setInterval(() => {
+        loadDashboardData().catch(() => {
+            // Keep current data in UI when refresh fails.
+        });
+    }, 60000);
 });

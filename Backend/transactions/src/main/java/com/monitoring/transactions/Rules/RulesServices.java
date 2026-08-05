@@ -6,6 +6,11 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+import com.monitoring.transactions.Alerts.Alerts;
+import com.monitoring.transactions.Alerts.AlertsRepository;
+import com.monitoring.transactions.Alerts.AlertsService;
+import com.monitoring.transactions.BankTransactions.BankTransactions;
+import com.monitoring.transactions.BankTransactions.BankTransactionsRepository;
 import com.monitoring.transactions.Exception.GeneralizedException;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
@@ -15,9 +20,22 @@ import org.springframework.stereotype.Service;
 public class RulesServices {
 
 	private final RulesRepository rulesRepository;
+	private final AlertsService alertsService;
+	private final AlertsRepository alertsRepository;
+	private final BankTransactionsRepository bankTransactionsRepository;
+	private final RuleEngineService ruleEngineService;
 
-	public RulesServices(RulesRepository rulesRepository) {
+	public RulesServices(
+		RulesRepository rulesRepository,
+		AlertsService alertsService,
+		AlertsRepository alertsRepository,
+		BankTransactionsRepository bankTransactionsRepository,
+		RuleEngineService ruleEngineService) {
 		this.rulesRepository = rulesRepository;
+		this.alertsService = alertsService;
+		this.alertsRepository = alertsRepository;
+		this.bankTransactionsRepository = bankTransactionsRepository;
+		this.ruleEngineService = ruleEngineService;
 	}
 
 	public List<Rules> getAllRules() {
@@ -55,7 +73,9 @@ public class RulesServices {
 				rule.getMaxTransactions(),
 				rule.getSeverity(),
 				rule.getActive());
-			return rulesRepository.save(newRule);
+			Rules saved = rulesRepository.save(newRule);
+			synchronizeAlertsForRule(saved);
+			return saved;
 		} catch (DataAccessException exception) {
 			throw new GeneralizedException(
 				"Unable to create rule.",
@@ -72,7 +92,9 @@ public class RulesServices {
 			if (!updated) {
 				throw new GeneralizedException("Rule not found for id: " + id, HttpStatus.NOT_FOUND);
 			}
-			return getRuleById(id);
+			Rules updatedRule = getRuleById(id);
+			synchronizeAlertsForRule(updatedRule);
+			return updatedRule;
 		} catch (DataAccessException exception) {
 			throw new GeneralizedException(
 				"Unable to update rule.",
@@ -84,6 +106,7 @@ public class RulesServices {
 	public void deleteRule(Long id) {
 		validateId(id);
 		try {
+			alertsRepository.deleteAlertsByRuleId(id);
 			boolean deleted = rulesRepository.deleteById(id);
 			if (!deleted) {
 				throw new GeneralizedException("Rule not found for id: " + id, HttpStatus.NOT_FOUND);
@@ -101,6 +124,7 @@ public class RulesServices {
 			throw new GeneralizedException("Rule id must be a positive number.", HttpStatus.BAD_REQUEST);
 		}
 	}
+
 
 	private void validateRule(Rules rule) {
 		if (rule == null) {
@@ -159,5 +183,39 @@ public class RulesServices {
 		}
 		String trimmed = value.trim();
 		return trimmed.isEmpty() ? null : trimmed;
+	}
+
+	private void synchronizeAlertsForRule(Rules rule) {
+		if (rule == null || rule.getId() == null || !Boolean.TRUE.equals(rule.getActive())) {
+			return;
+		}
+
+		List<BankTransactions> transactions = bankTransactionsRepository.findAll();
+		for (BankTransactions transaction : transactions) {
+			if (transaction.getId() == null) {
+				continue;
+			}
+			boolean matches = ruleEngineService.matchesPersistedTransaction(transaction, rule, transactions);
+			if (!matches) {
+				continue;
+			}
+			boolean alreadyTracked = alertsRepository.hasActiveAlertForTransactionAndRule(transaction.getId(), rule.getId());
+			if (alreadyTracked) {
+				continue;
+			}
+
+			Alerts alert = new Alerts(
+				transaction.getId(),
+				rule.getId(),
+				ruleEngineService.buildAlertReason(rule),
+				rule.getSeverity() == null ? "MEDIUM" : rule.getSeverity(),
+				"OPEN",
+				"OPEN");
+			alertsService.createAlert(alert);
+
+			if (!"PENDING".equalsIgnoreCase(transaction.getStatus())) {
+				bankTransactionsRepository.updateStatus(transaction.getId(), "PENDING");
+			}
+		}
 	}
 }

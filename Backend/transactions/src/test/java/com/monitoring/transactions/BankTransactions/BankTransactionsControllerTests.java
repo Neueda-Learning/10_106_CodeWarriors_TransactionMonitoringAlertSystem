@@ -53,7 +53,7 @@ class BankTransactionsControllerTests {
                 new BankTransactions(1L, 1L, 2L, new BigDecimal("100.00"), "USD", fixedTime, "COMPLETED", fixedTime),
                 new BankTransactions(2L, 3L, 4L, new BigDecimal("50.00"), "EUR", fixedTime, "PENDING", fixedTime)));
 
-        mockMvc.perform(get("/bank-transactions"))
+        mockMvc.perform(get("/transactions"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(2))
                 .andExpect(jsonPath("$[0].id").value(1))
@@ -64,7 +64,7 @@ class BankTransactionsControllerTests {
     void getAllTransactions_returns200WithEmptyList() throws Exception {
         when(bankTransactionServices.getAllTransactions()).thenReturn(List.of());
 
-        mockMvc.perform(get("/bank-transactions"))
+        mockMvc.perform(get("/transactions"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(0));
     }
@@ -74,7 +74,7 @@ class BankTransactionsControllerTests {
         BankTransactions transaction = new BankTransactions(10L, 1L, 2L, new BigDecimal("77.77"), "USD", fixedTime, "FAILED", fixedTime);
         when(bankTransactionServices.getTransactionById(10L)).thenReturn(transaction);
 
-        mockMvc.perform(get("/bank-transactions/10"))
+        mockMvc.perform(get("/transactions/10"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(10))
                 .andExpect(jsonPath("$.status").value("FAILED"));
@@ -85,7 +85,7 @@ class BankTransactionsControllerTests {
         when(bankTransactionServices.getTransactionById(404L))
                 .thenThrow(new GeneralizedException("Transaction not found for id: 404", HttpStatus.NOT_FOUND));
 
-        mockMvc.perform(get("/bank-transactions/404"))
+        mockMvc.perform(get("/transactions/404"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value(404));
     }
@@ -95,7 +95,7 @@ class BankTransactionsControllerTests {
         when(bankTransactionServices.getTransactionById(0L))
                 .thenThrow(new GeneralizedException("Transaction id must be a positive number.", HttpStatus.BAD_REQUEST));
 
-        mockMvc.perform(get("/bank-transactions/0"))
+        mockMvc.perform(get("/transactions/0"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value(400));
     }
@@ -105,7 +105,7 @@ class BankTransactionsControllerTests {
         BankTransactions created = new BankTransactions(20L, 2L, 3L, new BigDecimal("45.00"), "USD", fixedTime, "PENDING", fixedTime);
         when(bankTransactionServices.createTransaction(any(BankTransactions.class))).thenReturn(created);
 
-        mockMvc.perform(post("/bank-transactions")
+        mockMvc.perform(post("/transactions")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -127,7 +127,7 @@ class BankTransactionsControllerTests {
         when(bankTransactionServices.createTransaction(any(BankTransactions.class)))
                 .thenThrow(new GeneralizedException("Invalid bank transaction input.", HttpStatus.BAD_REQUEST));
 
-        mockMvc.perform(post("/bank-transactions")
+        mockMvc.perform(post("/transactions")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -141,7 +141,7 @@ class BankTransactionsControllerTests {
 
     @Test
     void createTransaction_returns400WhenBodyMalformed() throws Exception {
-        mockMvc.perform(post("/bank-transactions")
+        mockMvc.perform(post("/transactions")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("invalid-json"))
                 .andExpect(status().isBadRequest());
@@ -152,7 +152,7 @@ class BankTransactionsControllerTests {
         BankTransactions updated = new BankTransactions(8L, 3L, 4L, new BigDecimal("150.00"), "EUR", fixedTime, "COMPLETED", fixedTime);
         when(bankTransactionServices.updateTransaction(eq(8L), any(BankTransactions.class))).thenReturn(updated);
 
-        mockMvc.perform(put("/bank-transactions/8")
+        mockMvc.perform(put("/transactions/8")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -174,7 +174,7 @@ class BankTransactionsControllerTests {
         when(bankTransactionServices.updateTransaction(eq(1000L), any(BankTransactions.class)))
                 .thenThrow(new GeneralizedException("Transaction not found for id: 1000", HttpStatus.NOT_FOUND));
 
-        mockMvc.perform(put("/bank-transactions/1000")
+        mockMvc.perform(put("/transactions/1000")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -194,7 +194,7 @@ class BankTransactionsControllerTests {
     void deleteTransaction_returns204WhenDeleted() throws Exception {
         doNothing().when(bankTransactionServices).deleteTransaction(9L);
 
-        mockMvc.perform(delete("/bank-transactions/9"))
+        mockMvc.perform(delete("/transactions/9"))
                 .andExpect(status().isNoContent());
 
         verify(bankTransactionServices).deleteTransaction(9L);
@@ -205,7 +205,7 @@ class BankTransactionsControllerTests {
         doThrow(new GeneralizedException("Transaction not found for id: 123", HttpStatus.NOT_FOUND))
                 .when(bankTransactionServices).deleteTransaction(123L);
 
-        mockMvc.perform(delete("/bank-transactions/123"))
+        mockMvc.perform(delete("/transactions/123"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value(404));
     }

@@ -4,6 +4,9 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
+import com.monitoring.transactions.Alerts.AlertsRepository;
+import com.monitoring.transactions.Alerts.AlertsService;
+import com.monitoring.transactions.BankTransactions.BankTransactionsRepository;
 import com.monitoring.transactions.Exception.GeneralizedException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -26,11 +30,29 @@ class RulesServicesTests {
     @Mock
     private RulesRepository rulesRepository;
 
+    @Mock
+    private AlertsService alertsService;
+
+    @Mock
+    private AlertsRepository alertsRepository;
+
+    @Mock
+    private BankTransactionsRepository bankTransactionsRepository;
+
+    @Mock
+    private RuleEngineService ruleEngineService;
+
     private RulesServices rulesServices;
 
     @BeforeEach
     void setUp() {
-        rulesServices = new RulesServices(rulesRepository);
+        rulesServices = new RulesServices(
+                rulesRepository,
+                alertsService,
+                alertsRepository,
+                bankTransactionsRepository,
+                ruleEngineService);
+        lenient().when(bankTransactionsRepository.findAll()).thenReturn(List.of());
     }
 
     @Test
@@ -219,6 +241,7 @@ class RulesServicesTests {
 
         rulesServices.deleteRule(7L);
 
+        verify(alertsRepository).deleteAlertsByRuleId(7L);
         verify(rulesRepository).deleteById(7L);
     }
 

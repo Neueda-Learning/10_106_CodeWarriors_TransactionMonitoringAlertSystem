@@ -7,7 +7,11 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
+import com.monitoring.transactions.Alerts.Alerts;
+import com.monitoring.transactions.Alerts.AlertsService;
 import com.monitoring.transactions.Exception.GeneralizedException;
+import com.monitoring.transactions.Rules.RuleEngineService;
+import com.monitoring.transactions.Rules.Rules;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -18,9 +22,16 @@ public class BankTransactionServices {
 	private static final Set<String> ALLOWED_STATUSES = Set.of("COMPLETED", "PENDING", "FAILED");
 
 	private final BankTransactionsRepository bankTransactionsRepository;
+	private final RuleEngineService ruleEngineService;
+	private final AlertsService alertsService;
 
-	public BankTransactionServices(BankTransactionsRepository bankTransactionsRepository) {
+	public BankTransactionServices(
+		BankTransactionsRepository bankTransactionsRepository,
+		RuleEngineService ruleEngineService,
+		AlertsService alertsService) {
 		this.bankTransactionsRepository = bankTransactionsRepository;
+		this.ruleEngineService = ruleEngineService;
+		this.alertsService = alertsService;
 	}
 
 	public List<BankTransactions> getAllTransactions() {
@@ -50,17 +61,41 @@ public class BankTransactionServices {
 	public BankTransactions createTransaction(BankTransactions transaction) {
 		validateTransaction(transaction);
 		try {
+			List<Rules> triggeredRules = ruleEngineService.evaluateIncomingTransaction(transaction);
+			String finalStatus = triggeredRules.isEmpty() ? "COMPLETED" : "PENDING";
+
 			BankTransactions newTransaction = new BankTransactions(
 				transaction.getFromAccountId(),
 				transaction.getToAccountId(),
 				transaction.getAmount(),
 				transaction.getCurrency(),
 				transaction.getTransactionTime(),
-				transaction.getStatus());
-			return bankTransactionsRepository.save(newTransaction);
+				finalStatus);
+
+			BankTransactions savedTransaction = bankTransactionsRepository.save(newTransaction);
+
+			for (Rules triggeredRule : triggeredRules) {
+				Alerts generatedAlert = new Alerts(
+					savedTransaction.getId(),
+					triggeredRule.getId(),
+					ruleEngineService.buildAlertReason(triggeredRule),
+					triggeredRule.getSeverity() == null ? "MEDIUM" : triggeredRule.getSeverity(),
+					"OPEN",
+					"OPEN");
+				alertsService.createAlert(generatedAlert);
+			}
+
+			return savedTransaction;
 		} catch (DataAccessException exception) {
 			throw new GeneralizedException(
 				"Unable to create bank transaction.",
+				exception,
+				HttpStatus.INTERNAL_SERVER_ERROR);
+		} catch (GeneralizedException exception) {
+			throw exception;
+		} catch (Exception exception) {
+			throw new GeneralizedException(
+				"Unable to evaluate transaction against monitoring rules.",
 				exception,
 				HttpStatus.INTERNAL_SERVER_ERROR);
 		}
@@ -133,9 +168,7 @@ public class BankTransactionServices {
 		if (transaction.getTransactionTime() == null) {
 			details.put("transactionTime", "transactionTime is required.");
 		}
-		if (status == null) {
-			details.put("status", "status is required.");
-		} else {
+		if (status != null) {
 			String upperStatus = status.toUpperCase(Locale.ROOT);
 			if (!ALLOWED_STATUSES.contains(upperStatus)) {
 				details.put("status", "status must be one of COMPLETED, PENDING, FAILED.");
@@ -149,7 +182,7 @@ public class BankTransactionServices {
 		}
 
 		transaction.setCurrency(currency.toUpperCase(Locale.ROOT));
-		transaction.setStatus(status);
+		transaction.setStatus(status == null ? "PENDING" : status);
 	}
 
 	private String normalize(String value) {

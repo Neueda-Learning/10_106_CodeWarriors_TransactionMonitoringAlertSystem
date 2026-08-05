@@ -4,6 +4,15 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
 
+    const API_BASE_URL = window.localStorage.getItem('apiBaseUrl') || 'http://localhost:8085';
+
+    const RULE_TYPES = [
+        { value: 'AMOUNT_THRESHOLD', label: 'Amount Threshold' },
+        { value: 'VELOCITY', label: 'Velocity Rule' },
+        { value: 'NEW_PAYEE', label: 'New Payee Check' },
+        { value: 'DAILY_LIMIT', label: 'Daily Limit' }
+    ];
+
     const ui = {
         statTotalRules: document.getElementById('stat-total-rules'),
         statActiveRules: document.getElementById('stat-active-rules'),
@@ -28,7 +37,6 @@ document.addEventListener('DOMContentLoaded', () => {
         ruleTypeField: document.getElementById('rule-type-field'),
         ruleSeverityField: document.getElementById('rule-severity-field'),
         ruleStatusField: document.getElementById('rule-status-field'),
-        ruleDescriptionField: document.getElementById('rule-description-field'),
         dynamicFieldsHost: document.getElementById('rule-type-dynamic-fields'),
 
         ruleViewModalEl: document.getElementById('ruleViewModal'),
@@ -39,77 +47,21 @@ document.addEventListener('DOMContentLoaded', () => {
     const ruleViewModal = bootstrap.Modal.getOrCreateInstance(ui.ruleViewModalEl);
 
     const state = {
-        nextRuleId: 105,
-        editingRuleId: null,
-        rules: [
-            {
-                id: 101,
-                name: 'Amount Threshold',
-                type: 'Amount Threshold',
-                severity: 'HIGH',
-                status: 'ACTIVE',
-                alertsGenerated: 41,
-                description: 'Triggers when a single transaction exceeds the configured amount threshold.',
-                lastUpdated: '2026-07-28 10:40',
-                config: {
-                    thresholdAmount: 10000
-                }
-            },
-            {
-                id: 102,
-                name: 'Velocity Rule',
-                type: 'Velocity Rule',
-                severity: 'CRITICAL',
-                status: 'ACTIVE',
-                alertsGenerated: 63,
-                description: 'Detects rapid transaction bursts over a short period.',
-                lastUpdated: '2026-08-01 09:10',
-                config: {
-                    maxTransactions: 6,
-                    timeWindowMinutes: 10
-                }
-            },
-            {
-                id: 103,
-                name: 'New Payee Check',
-                type: 'New Payee Check',
-                severity: 'MEDIUM',
-                status: 'INACTIVE',
-                alertsGenerated: 18,
-                description: 'Flags higher risk first-time beneficiary transfers.',
-                lastUpdated: '2026-07-25 15:05',
-                config: {
-                    enabled: true
-                }
-            },
-            {
-                id: 104,
-                name: 'Daily Limit',
-                type: 'Daily Limit',
-                severity: 'HIGH',
-                status: 'ACTIVE',
-                alertsGenerated: 29,
-                description: 'Monitors daily outgoing amount and detects limit breaches.',
-                lastUpdated: '2026-08-03 12:22',
-                config: {
-                    dailyLimitAmount: 25000
-                }
-            }
-        ]
+        rules: [],
+        editingRuleId: null
     };
 
-    function formatNow() {
-        const d = new Date();
-        const yyyy = d.getFullYear();
-        const mm = String(d.getMonth() + 1).padStart(2, '0');
-        const dd = String(d.getDate()).padStart(2, '0');
-        const hh = String(d.getHours()).padStart(2, '0');
-        const mi = String(d.getMinutes()).padStart(2, '0');
-        return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
+    function typeLabel(value) {
+        const found = RULE_TYPES.find(type => type.value === value);
+        return found ? found.label : value;
     }
 
     function currency(value) {
-        return `$${Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+        const parsed = Number(value);
+        if (!Number.isFinite(parsed)) {
+            return '-';
+        }
+        return `$${parsed.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
     }
 
     function getSeverityBadgeClass(severity) {
@@ -119,111 +71,24 @@ document.addEventListener('DOMContentLoaded', () => {
         return 'text-bg-secondary';
     }
 
-    function getStatusBadgeClass(status) {
-        return status === 'ACTIVE' ? 'text-bg-success' : 'text-bg-secondary';
+    function getStatusBadgeClass(active) {
+        return active ? 'text-bg-success' : 'text-bg-secondary';
     }
 
     function formatRuleLimit(rule) {
-        if (rule.type === 'Amount Threshold') {
-            return `Threshold: ${currency(rule.config.thresholdAmount)}`;
+        if (rule.type === 'AMOUNT_THRESHOLD' || rule.type === 'DAILY_LIMIT') {
+            return rule.threshold != null ? `Threshold: ${currency(rule.threshold)}` : '-';
         }
-        if (rule.type === 'Velocity Rule') {
-            return `${rule.config.maxTransactions} tx / ${rule.config.timeWindowMinutes} min`;
+        if (rule.type === 'VELOCITY') {
+            if (rule.maxTransactions != null && rule.timeWindow != null) {
+                return `${rule.maxTransactions} tx / ${rule.timeWindow} min`;
+            }
+            return '-';
         }
-        if (rule.type === 'New Payee Check') {
-            return `Enabled: ${rule.config.enabled ? 'Yes' : 'No'}`;
-        }
-        if (rule.type === 'Daily Limit') {
-            return `Daily Cap: ${currency(rule.config.dailyLimitAmount)}`;
+        if (rule.type === 'NEW_PAYEE') {
+            return 'First transaction to payee';
         }
         return '-';
-    }
-
-    function renderDynamicFields(ruleType, config = null) {
-        const source = config || {};
-        let html = '';
-
-        if (ruleType === 'Amount Threshold') {
-            html = `
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <label for="field-threshold-amount" class="form-label">Threshold Amount</label>
-                        <input id="field-threshold-amount" type="number" min="0" step="0.01" class="form-control" value="${source.thresholdAmount ?? ''}" required>
-                    </div>
-                </div>
-            `;
-        } else if (ruleType === 'Velocity Rule') {
-            html = `
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <label for="field-max-transactions" class="form-label">Maximum Transactions</label>
-                        <input id="field-max-transactions" type="number" min="1" step="1" class="form-control" value="${source.maxTransactions ?? ''}" required>
-                    </div>
-                    <div class="col-md-6">
-                        <label for="field-time-window" class="form-label">Time Window (minutes)</label>
-                        <input id="field-time-window" type="number" min="1" step="1" class="form-control" value="${source.timeWindowMinutes ?? ''}" required>
-                    </div>
-                </div>
-            `;
-        } else if (ruleType === 'New Payee Check') {
-            html = `
-                <div class="form-check form-switch mt-2">
-                    <input class="form-check-input" type="checkbox" role="switch" id="field-new-payee-enabled" ${source.enabled !== false ? 'checked' : ''}>
-                    <label class="form-check-label" for="field-new-payee-enabled">Enabled</label>
-                </div>
-            `;
-        } else if (ruleType === 'Daily Limit') {
-            html = `
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <label for="field-daily-limit" class="form-label">Daily Limit Amount</label>
-                        <input id="field-daily-limit" type="number" min="0" step="0.01" class="form-control" value="${source.dailyLimitAmount ?? ''}" required>
-                    </div>
-                </div>
-            `;
-        }
-
-        ui.dynamicFieldsHost.innerHTML = html;
-    }
-
-    function readDynamicFields(ruleType) {
-        if (ruleType === 'Amount Threshold') {
-            const thresholdAmount = Number(document.getElementById('field-threshold-amount').value);
-            return { thresholdAmount };
-        }
-        if (ruleType === 'Velocity Rule') {
-            const maxTransactions = Number(document.getElementById('field-max-transactions').value);
-            const timeWindowMinutes = Number(document.getElementById('field-time-window').value);
-            return { maxTransactions, timeWindowMinutes };
-        }
-        if (ruleType === 'New Payee Check') {
-            const enabled = document.getElementById('field-new-payee-enabled').checked;
-            return { enabled };
-        }
-        if (ruleType === 'Daily Limit') {
-            const dailyLimitAmount = Number(document.getElementById('field-daily-limit').value);
-            return { dailyLimitAmount };
-        }
-        return {};
-    }
-
-    function validateDynamicFields(ruleType, config) {
-        if (ruleType === 'Amount Threshold') {
-            return Number.isFinite(config.thresholdAmount) && config.thresholdAmount > 0;
-        }
-        if (ruleType === 'Velocity Rule') {
-            return Number.isInteger(config.maxTransactions) &&
-                config.maxTransactions > 0 &&
-                Number.isInteger(config.timeWindowMinutes) &&
-                config.timeWindowMinutes > 0;
-        }
-        if (ruleType === 'New Payee Check') {
-            return typeof config.enabled === 'boolean';
-        }
-        if (ruleType === 'Daily Limit') {
-            return Number.isFinite(config.dailyLimitAmount) && config.dailyLimitAmount > 0;
-        }
-        return false;
     }
 
     function getFilters() {
@@ -237,26 +102,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function applyFilters(rules, filters) {
         return rules.filter(rule => {
+            const ruleStatus = rule.active ? 'ACTIVE' : 'INACTIVE';
             const matchesSearch = String(rule.id).includes(filters.searchTerm) ||
-                rule.name.toLowerCase().includes(filters.searchTerm) ||
+                String(rule.name || '').toLowerCase().includes(filters.searchTerm) ||
                 formatRuleLimit(rule).toLowerCase().includes(filters.searchTerm);
             const matchesType = filters.type === 'ALL' || rule.type === filters.type;
             const matchesSeverity = filters.severity === 'ALL' || rule.severity === filters.severity;
-            const matchesStatus = filters.status === 'ALL' || rule.status === filters.status;
+            const matchesStatus = filters.status === 'ALL' || ruleStatus === filters.status;
             return matchesSearch && matchesType && matchesSeverity && matchesStatus;
         });
     }
 
-    function resetAllFilters() {
-        ui.searchInput.value = '';
-        ui.typeFilter.value = 'ALL';
-        ui.severityFilter.value = 'ALL';
-        ui.statusFilter.value = 'ALL';
-    }
-
     function renderStats() {
         const totalRules = state.rules.length;
-        const activeRules = state.rules.filter(rule => rule.status === 'ACTIVE').length;
+        const activeRules = state.rules.filter(rule => rule.active).length;
         const disabledRules = totalRules - activeRules;
         const ruleTypes = new Set(state.rules.map(rule => rule.type)).size;
 
@@ -276,23 +135,23 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         filteredRules.forEach(rule => {
+            const ruleStatus = rule.active ? 'ACTIVE' : 'INACTIVE';
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td class="fw-bold">R-${rule.id}</td>
-                <td>${rule.name}</td>
-                <td>${rule.type}</td>
+                <td>${rule.name || '-'}</td>
+                <td>${typeLabel(rule.type)}</td>
                 <td>${formatRuleLimit(rule)}</td>
-                <td><span class="badge ${getSeverityBadgeClass(rule.severity)}">${rule.severity}</span></td>
-                <td><span class="badge ${getStatusBadgeClass(rule.status)}">${rule.status}</span></td>
-                <td>${rule.alertsGenerated}</td>
-                <td><small class="text-muted">${rule.lastUpdated}</small></td>
+                <td><span class="badge ${getSeverityBadgeClass(rule.severity)}">${rule.severity || '-'}</span></td>
+                <td><span class="badge ${getStatusBadgeClass(rule.active)}">${ruleStatus}</span></td>
+                <td>-</td>
+                <td><small class="text-muted">-</small></td>
                 <td class="text-end">
                     <div class="btn-group btn-group-sm rules-action-group" role="group">
                         <button class="btn btn-outline-primary" data-action="view" data-id="${rule.id}">View</button>
                         <button class="btn btn-outline-secondary" data-action="edit" data-id="${rule.id}">Edit</button>
                         <button class="btn btn-outline-danger" data-action="delete" data-id="${rule.id}">Delete</button>
-                        <button class="btn btn-outline-info" data-action="alerts" data-id="${rule.id}">View Alerts</button>
-                        <button class="btn btn-outline-dark" data-action="toggle" data-id="${rule.id}">${rule.status === 'ACTIVE' ? 'Disable' : 'Enable'}</button>
+                        <button class="btn btn-outline-dark" data-action="toggle" data-id="${rule.id}">${rule.active ? 'Disable' : 'Enable'}</button>
                     </div>
                 </td>
             `;
@@ -301,16 +160,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderRuleView(rule) {
+        const ruleStatus = rule.active ? 'ACTIVE' : 'INACTIVE';
         ui.ruleViewContent.innerHTML = `
             <div><span class="text-muted">Rule ID</span><h6 class="mb-3">R-${rule.id}</h6></div>
-            <div><span class="text-muted">Rule Name</span><h6 class="mb-3">${rule.name}</h6></div>
-            <div><span class="text-muted">Rule Type</span><h6 class="mb-3">${rule.type}</h6></div>
+            <div><span class="text-muted">Rule Name</span><h6 class="mb-3">${rule.name || '-'}</h6></div>
+            <div><span class="text-muted">Rule Type</span><h6 class="mb-3">${typeLabel(rule.type)}</h6></div>
             <div><span class="text-muted">Threshold / Limit</span><h6 class="mb-3">${formatRuleLimit(rule)}</h6></div>
-            <div><span class="text-muted">Severity</span><h6 class="mb-3"><span class="badge ${getSeverityBadgeClass(rule.severity)}">${rule.severity}</span></h6></div>
-            <div><span class="text-muted">Status</span><h6 class="mb-3"><span class="badge ${getStatusBadgeClass(rule.status)}">${rule.status}</span></h6></div>
-            <div><span class="text-muted">Alerts Generated</span><h6 class="mb-3">${rule.alertsGenerated}</h6></div>
-            <div><span class="text-muted">Last Updated</span><h6 class="mb-3">${rule.lastUpdated}</h6></div>
-            <div class="rules-view-description"><span class="text-muted">Description</span><p class="mb-0 mt-1">${rule.description || 'No description provided.'}</p></div>
+            <div><span class="text-muted">Severity</span><h6 class="mb-3"><span class="badge ${getSeverityBadgeClass(rule.severity)}">${rule.severity || '-'}</span></h6></div>
+            <div><span class="text-muted">Status</span><h6 class="mb-3"><span class="badge ${getStatusBadgeClass(rule.active)}">${ruleStatus}</span></h6></div>
+            <div><span class="text-muted">Alerts Generated</span><h6 class="mb-3">-</h6></div>
+            <div><span class="text-muted">Last Updated</span><h6 class="mb-3">-</h6></div>
         `;
     }
 
@@ -319,40 +178,89 @@ document.addEventListener('DOMContentLoaded', () => {
         renderTable();
     }
 
-    const RulesStore = {
-        create(ruleInput) {
-            const rule = {
-                id: state.nextRuleId++,
-                ...ruleInput,
-                alertsGenerated: 0,
-                lastUpdated: formatNow()
-            };
-            state.rules.push(rule);
-            return rule;
-        },
-        update(ruleId, updates) {
-            const target = state.rules.find(rule => rule.id === ruleId);
-            if (!target) return null;
-            Object.assign(target, updates, { lastUpdated: formatNow() });
-            return target;
-        },
-        delete(ruleId) {
-            const idx = state.rules.findIndex(rule => rule.id === ruleId);
-            if (idx < 0) return false;
-            state.rules.splice(idx, 1);
-            return true;
-        },
-        toggleStatus(ruleId) {
-            const target = state.rules.find(rule => rule.id === ruleId);
-            if (!target) return null;
-            target.status = target.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
-            target.lastUpdated = formatNow();
-            return target;
-        },
-        getById(ruleId) {
-            return state.rules.find(rule => rule.id === ruleId) || null;
+    function renderTypeSelects() {
+        const filterOptions = ['<option value="ALL">All Types</option>']
+            .concat(RULE_TYPES.map(type => `<option value="${type.value}">${type.label}</option>`));
+        ui.typeFilter.innerHTML = filterOptions.join('');
+
+        const formOptions = ['<option value="">Select type...</option>']
+            .concat(RULE_TYPES.map(type => `<option value="${type.value}">${type.label}</option>`));
+        ui.ruleTypeField.innerHTML = formOptions.join('');
+    }
+
+    function renderDynamicFields(ruleType, source) {
+        const config = source || {};
+        let html = '';
+
+        if (ruleType === 'AMOUNT_THRESHOLD' || ruleType === 'DAILY_LIMIT') {
+            html = `
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label for="field-threshold-amount" class="form-label">Threshold Amount</label>
+                        <input id="field-threshold-amount" type="number" min="0" step="0.01" class="form-control" value="${config.threshold ?? ''}" required>
+                    </div>
+                </div>
+            `;
+        } else if (ruleType === 'VELOCITY') {
+            html = `
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label for="field-max-transactions" class="form-label">Maximum Transactions</label>
+                        <input id="field-max-transactions" type="number" min="1" step="1" class="form-control" value="${config.maxTransactions ?? ''}" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="field-time-window" class="form-label">Time Window (minutes)</label>
+                        <input id="field-time-window" type="number" min="1" step="1" class="form-control" value="${config.timeWindow ?? ''}" required>
+                    </div>
+                </div>
+            `;
         }
-    };
+
+        ui.dynamicFieldsHost.innerHTML = html;
+    }
+
+    function readDynamicFields(ruleType) {
+        if (ruleType === 'AMOUNT_THRESHOLD' || ruleType === 'DAILY_LIMIT') {
+            const threshold = Number(document.getElementById('field-threshold-amount').value);
+            return {
+                threshold: Number.isFinite(threshold) ? threshold : null,
+                timeWindow: null,
+                maxTransactions: null
+            };
+        }
+        if (ruleType === 'VELOCITY') {
+            const maxTransactions = Number(document.getElementById('field-max-transactions').value);
+            const timeWindow = Number(document.getElementById('field-time-window').value);
+            return {
+                threshold: null,
+                timeWindow: Number.isInteger(timeWindow) ? timeWindow : null,
+                maxTransactions: Number.isInteger(maxTransactions) ? maxTransactions : null
+            };
+        }
+        return {
+            threshold: null,
+            timeWindow: null,
+            maxTransactions: null
+        };
+    }
+
+    function validateDynamicFields(ruleType, config) {
+        if (ruleType === 'AMOUNT_THRESHOLD' || ruleType === 'DAILY_LIMIT') {
+            return Number.isFinite(config.threshold) && config.threshold > 0;
+        }
+        if (ruleType === 'VELOCITY') {
+            return Number.isInteger(config.maxTransactions) && config.maxTransactions > 0 &&
+                Number.isInteger(config.timeWindow) && config.timeWindow > 0;
+        }
+        return true;
+    }
+
+    function resetAllFilters() {
+        ui.searchInput.value = '';
+        ui.typeFilter.value = 'ALL';
+        ui.severityFilter.value = 'ALL';
+        ui.statusFilter.value = 'ALL';
+    }
 
     function resetForm() {
         state.editingRuleId = null;
@@ -362,21 +270,20 @@ document.addEventListener('DOMContentLoaded', () => {
         ui.saveRuleBtn.textContent = 'Save';
         ui.ruleSeverityField.value = 'MEDIUM';
         ui.ruleStatusField.value = 'ACTIVE';
-        ui.ruleTypeField.value = 'Amount Threshold';
-        renderDynamicFields('Amount Threshold');
+        ui.ruleTypeField.value = 'AMOUNT_THRESHOLD';
+        renderDynamicFields('AMOUNT_THRESHOLD');
     }
 
     function openEditForm(rule) {
         state.editingRuleId = rule.id;
         ui.ruleIdField.value = String(rule.id);
-        ui.ruleNameField.value = rule.name;
-        ui.ruleTypeField.value = rule.type;
-        ui.ruleSeverityField.value = rule.severity;
-        ui.ruleStatusField.value = rule.status;
-        ui.ruleDescriptionField.value = rule.description || '';
+        ui.ruleNameField.value = rule.name || '';
+        ui.ruleTypeField.value = rule.type || '';
+        ui.ruleSeverityField.value = rule.severity || 'MEDIUM';
+        ui.ruleStatusField.value = rule.active ? 'ACTIVE' : 'INACTIVE';
         ui.ruleModalTitle.textContent = 'Edit Rule';
         ui.saveRuleBtn.textContent = 'Update';
-        renderDynamicFields(rule.type, rule.config);
+        renderDynamicFields(rule.type, rule);
         ruleModal.show();
     }
 
@@ -384,15 +291,70 @@ document.addEventListener('DOMContentLoaded', () => {
         const name = ui.ruleNameField.value.trim();
         const type = ui.ruleTypeField.value;
         const severity = ui.ruleSeverityField.value;
-        const status = ui.ruleStatusField.value;
-        const description = ui.ruleDescriptionField.value.trim();
+        const active = ui.ruleStatusField.value === 'ACTIVE';
         const config = readDynamicFields(type);
 
         if (!name || !type || !validateDynamicFields(type, config)) {
             return null;
         }
 
-        return { name, type, severity, status, description, config };
+        return {
+            name,
+            type,
+            severity,
+            active,
+            threshold: config.threshold,
+            timeWindow: config.timeWindow,
+            maxTransactions: config.maxTransactions
+        };
+    }
+
+    async function fetchJson(url, options) {
+        const response = await fetch(url, options);
+        let payload = null;
+        if (response.status !== 204) {
+            payload = await response.json().catch(() => null);
+        }
+        if (!response.ok) {
+            const message = payload && payload.message ? payload.message : `Request failed (${response.status})`;
+            throw new Error(message);
+        }
+        return payload;
+    }
+
+    async function loadRules() {
+        const rules = await fetchJson(`${API_BASE_URL}/rules`);
+        state.rules = Array.isArray(rules) ? rules : [];
+        renderAll();
+    }
+
+    async function createRule(rule) {
+        await fetchJson(`${API_BASE_URL}/rules`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(rule)
+        });
+    }
+
+    async function updateRule(id, rule) {
+        await fetchJson(`${API_BASE_URL}/rules/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(rule)
+        });
+    }
+
+    async function deleteRule(id) {
+        await fetchJson(`${API_BASE_URL}/rules/${id}`, { method: 'DELETE' });
+    }
+
+    function notifyRulesChanged() {
+        window.dispatchEvent(new CustomEvent('rules:changed'));
+        window.localStorage.setItem('rulesUpdatedAt', String(Date.now()));
+    }
+
+    function getRuleById(id) {
+        return state.rules.find(rule => rule.id === id) || null;
     }
 
     ui.statCards.forEach(card => {
@@ -421,7 +383,7 @@ document.addEventListener('DOMContentLoaded', () => {
         renderDynamicFields(event.target.value);
     });
 
-    ui.ruleForm.addEventListener('submit', event => {
+    ui.ruleForm.addEventListener('submit', async event => {
         event.preventDefault();
 
         if (!ui.ruleForm.checkValidity()) {
@@ -435,14 +397,18 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        if (state.editingRuleId === null) {
-            RulesStore.create(payload);
-        } else {
-            RulesStore.update(state.editingRuleId, payload);
+        try {
+            if (state.editingRuleId == null) {
+                await createRule(payload);
+            } else {
+                await updateRule(state.editingRuleId, payload);
+            }
+            ruleModal.hide();
+            await loadRules();
+            notifyRulesChanged();
+        } catch (error) {
+            window.alert(error.message || 'Failed to save rule.');
         }
-
-        ruleModal.hide();
-        renderAll();
     });
 
     ui.resetFiltersBtn.addEventListener('click', () => {
@@ -455,14 +421,18 @@ document.addEventListener('DOMContentLoaded', () => {
     ui.severityFilter.addEventListener('change', renderTable);
     ui.statusFilter.addEventListener('change', renderTable);
 
-    rulesTableBody.addEventListener('click', event => {
+    rulesTableBody.addEventListener('click', async event => {
         const actionButton = event.target.closest('button[data-action]');
-        if (!actionButton) return;
+        if (!actionButton) {
+            return;
+        }
 
-        const ruleId = Number(actionButton.getAttribute('data-id'));
+        const id = Number(actionButton.getAttribute('data-id'));
         const action = actionButton.getAttribute('data-action');
-        const rule = RulesStore.getById(ruleId);
-        if (!rule) return;
+        const rule = getRuleById(id);
+        if (!rule) {
+            return;
+        }
 
         if (action === 'view') {
             renderRuleView(rule);
@@ -477,25 +447,45 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (action === 'delete') {
             const approved = window.confirm(`Delete rule R-${rule.id} (${rule.name})?`);
-            if (!approved) return;
-            RulesStore.delete(rule.id);
-            renderAll();
-            return;
-        }
-
-        if (action === 'alerts') {
-            window.location.href = `alerts.html?ruleId=${rule.id}`;
+            if (!approved) {
+                return;
+            }
+            try {
+                await deleteRule(rule.id);
+                await loadRules();
+                notifyRulesChanged();
+            } catch (error) {
+                window.alert(error.message || 'Failed to delete rule.');
+            }
             return;
         }
 
         if (action === 'toggle') {
-            RulesStore.toggleStatus(rule.id);
-            renderAll();
+            try {
+                await updateRule(rule.id, {
+                    name: rule.name,
+                    type: rule.type,
+                    severity: rule.severity,
+                    threshold: rule.threshold,
+                    timeWindow: rule.timeWindow,
+                    maxTransactions: rule.maxTransactions,
+                    active: !rule.active
+                });
+                await loadRules();
+                notifyRulesChanged();
+            } catch (error) {
+                window.alert(error.message || 'Failed to change rule status.');
+            }
         }
     });
 
     ui.ruleModalEl.addEventListener('hidden.bs.modal', resetForm);
 
+    renderTypeSelects();
     resetForm();
-    renderAll();
+    loadRules().catch(() => {
+        state.rules = [];
+        renderAll();
+        window.alert('Could not load rules from backend.');
+    });
 });
