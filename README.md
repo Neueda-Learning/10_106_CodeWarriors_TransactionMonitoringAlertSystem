@@ -1,36 +1,69 @@
-# API Endpoints & Keys Documentation
+# Transaction Monitoring - End-to-End Setup
 
-This document contains all the necessary API endpoints and keys required for the backend functionality of the Transaction Monitoring System.
+This project has a Spring Boot backend and a static frontend dashboard.
 
-## 1. Internal REST API Endpoints (The "Keys" to Backend Services)
+## Backend API Routes
 
-These are the core endpoints provided by the Java Spring Boot backend. The frontend uses these to communicate with the database.
+### Accounts
+- `GET /accounts`
+- `GET /accounts/{id}`
+- `POST /accounts`
+- `PUT /accounts/{id}`
+- `DELETE /accounts/{id}`
 
-### 💳 Transactions API
-- **Endpoint**: `GET /api/transactions`
-- **Functionality**: Fetches all banking transactions in real-time. The live simulator inserts new transactions dynamically, and this endpoint retrieves them sorted by the most recent timestamp.
+### Bank Transactions
+- `GET /transactions`
+- `GET /transactions/{id}`
+- `POST /transactions`
+- `PUT /transactions/{id}`
+- `DELETE /transactions/{id}`
 
-### 🚨 Alerts API
-- **Endpoint**: `GET /api/alerts`
-- **Functionality**: Retrieves the list of all active security alerts triggered by the rule engine, including details like severity and the associated transaction ID.
+### Alerts
+- `GET /alerts`
+- `GET /alerts/{id}`
+- `POST /alerts`
+- `PUT /alerts/{id}/status`
+- `DELETE /alerts/{id}`
 
-- **Endpoint**: `POST /api/alerts/{alertId}/acknowledge`
-- **Functionality**: Updates a specific alert's status from `OPEN` to `ACKNOWLEDGED`. Used by operators to indicate they are reviewing a flagged transaction.
+### Rules
+- `GET /rules`
+- `GET /rules/{id}`
+- `POST /rules`
+- `PUT /rules/{id}`
+- `DELETE /rules/{id}`
 
-- **Endpoint**: `POST /api/alerts/{alertId}/dismiss`
-- **Functionality**: Updates a specific alert's status to `DISMISSED` or `CLOSED`, marking it as a false positive or fully resolved.
+## Local Run Guide
 
-### 📜 Rules API
-- **Endpoint**: `GET /api/rules`
-- **Functionality**: Retrieves all active transaction monitoring rules (e.g., Velocity Checks, Amount Thresholds).
+1. Start MySQL and ensure `root` credentials in `application.properties` are valid.
+2. Start backend on port `8085`.
+3. Serve frontend from a local static server.
 
-- **Endpoint**: `POST /api/rules`
-- **Functionality**: Allows system administrators to create, update, or toggle security rules on the fly.
+### Start Backend
 
-## 2. External API Keys (Future Enhancements)
+```powershell
+Set-Location "C:\10_106_CodeWarriors_TransactionMonitoring\Backend\transactions"
+.\mvnw.cmd spring-boot:run
+```
 
-Currently, the backend runs entirely locally via JDBC to MySQL and does not require external third-party API keys. However, the following integrations are standard for this type of system:
+### Run Tests
 
-- **Twilio API Key**: For sending real-time SMS notifications to compliance officers when a `HIGH` severity alert is generated.
-- **SendGrid API Key**: For emailing daily aggregated suspicious transaction reports.
-- **Auth0 Secret Key**: For securing the REST endpoints (JWT token validation) once user authentication is implemented.
+```powershell
+Set-Location "C:\10_106_CodeWarriors_TransactionMonitoring\Backend\transactions"
+.\mvnw.cmd test -DskipTests=false
+```
+
+### Start Frontend Static Server (Python example)
+
+```powershell
+Set-Location "C:\10_106_CodeWarriors_TransactionMonitoring\Frontend"
+python -m http.server 5500
+```
+
+Open: `http://localhost:5500/index.html`
+
+## Notes
+
+- Backend CORS is enabled for local integration.
+- SQL schema and seed data are loaded at startup from:
+  - `schema.sql`
+  - `seed_data.sql`

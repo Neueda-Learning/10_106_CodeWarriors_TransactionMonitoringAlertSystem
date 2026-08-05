@@ -1,7 +1,11 @@
 package com.monitoring.transactions.Alerts;
 
+import java.util.Locale;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
+import com.monitoring.transactions.BankTransactions.BankTransactionsRepository;
 import com.monitoring.transactions.Exception.GeneralizedException;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.EmptyResultDataAccessException;
@@ -12,9 +16,18 @@ import org.springframework.stereotype.Service;
 public class AlertsService {
 
 	private final AlertsRepository alertsRepository;
+	private final BankTransactionsRepository bankTransactionsRepository;
 
-	public AlertsService(AlertsRepository alertsRepository) {
+	private static final Map<String, Set<String>> ALLOWED_TRANSITIONS = Map.of(
+		"OPEN", Set.of("ACKNOWLEDGED"),
+		"ACKNOWLEDGED", Set.of("INVESTIGATING"),
+		"INVESTIGATING", Set.of("CLOSED", "DISMISSED"),
+		"CLOSED", Set.of(),
+		"DISMISSED", Set.of());
+
+	public AlertsService(AlertsRepository alertsRepository, BankTransactionsRepository bankTransactionsRepository) {
 		this.alertsRepository = alertsRepository;
+		this.bankTransactionsRepository = bankTransactionsRepository;
 	}
 
 	public int createAlert(Alerts alert) {
@@ -60,11 +73,26 @@ public class AlertsService {
 		validateStatus(oldStatus, newStatus);
 
 		try {
-			int affectedRows = alertsRepository.updateAlertStatus(id, oldStatus.trim(), newStatus.trim());
+			Alerts existingAlert = alertsRepository.getAlertById(id);
+			String currentStatus = normalizeStatus(existingAlert.getNewStatus());
+			String expectedCurrentStatus = normalizeStatus(oldStatus);
+			String targetStatus = normalizeStatus(newStatus);
+
+			if (!currentStatus.equals(expectedCurrentStatus)) {
+				throw new GeneralizedException("Alert status mismatch. Refresh data and retry.", HttpStatus.CONFLICT);
+			}
+
+			validateTransition(currentStatus, targetStatus);
+
+			int affectedRows = alertsRepository.updateAlertStatus(id, currentStatus, targetStatus);
 			if (affectedRows <= 0) {
 				throw new GeneralizedException("Alert not found", HttpStatus.NOT_FOUND);
 			}
+
+			updateLinkedTransactionStatus(existingAlert.getTransactionId(), targetStatus);
 			return affectedRows;
+		} catch (EmptyResultDataAccessException exception) {
+			throw new GeneralizedException("Alert not found", exception, HttpStatus.NOT_FOUND);
 		} catch (DataAccessException exception) {
 			throw new GeneralizedException("Failed to update alert", exception, HttpStatus.INTERNAL_SERVER_ERROR);
 		}
@@ -112,6 +140,46 @@ public class AlertsService {
 
 		if (newStatus == null || newStatus.isBlank()) {
 			throw new GeneralizedException("Status cannot be empty", HttpStatus.BAD_REQUEST);
+		}
+	}
+
+	private void validateTransition(String currentStatus, String targetStatus) {
+		Set<String> allowedTargets = ALLOWED_TRANSITIONS.get(currentStatus);
+		if (allowedTargets == null || !allowedTargets.contains(targetStatus)) {
+			throw new GeneralizedException(
+				"Invalid alert status transition from " + currentStatus + " to " + targetStatus + ".",
+				HttpStatus.BAD_REQUEST);
+		}
+	}
+
+	private String normalizeStatus(String status) {
+		if (status == null || status.isBlank()) {
+			return "OPEN";
+		}
+		return status.trim().toUpperCase(Locale.ROOT);
+	}
+
+	private void updateLinkedTransactionStatus(Long transactionId, String targetStatus) {
+		if (transactionId == null) {
+			return;
+		}
+
+		String transactionStatus = null;
+		if ("CLOSED".equals(targetStatus)) {
+			transactionStatus = "COMPLETED";
+		}
+		if ("DISMISSED".equals(targetStatus)) {
+			transactionStatus = "FAILED";
+		}
+		if ("ACKNOWLEDGED".equals(targetStatus) || "INVESTIGATING".equals(targetStatus) || "OPEN".equals(targetStatus)) {
+			transactionStatus = "PENDING";
+		}
+
+		if (transactionStatus != null) {
+			boolean updated = bankTransactionsRepository.updateStatus(transactionId, transactionStatus);
+			if (!updated) {
+				throw new GeneralizedException("Linked transaction not found", HttpStatus.NOT_FOUND);
+			}
 		}
 	}
 }

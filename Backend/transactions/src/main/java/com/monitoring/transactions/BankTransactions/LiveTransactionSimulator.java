@@ -11,11 +11,11 @@ import java.util.Random;
 @Component
 public class LiveTransactionSimulator {
 
-    private final BankTransactionsRepository repository;
+    private final BankTransactionServices bankTransactionServices;
     private final Random random = new Random();
 
-    public LiveTransactionSimulator(BankTransactionsRepository repository) {
-        this.repository = repository;
+    public LiveTransactionSimulator(BankTransactionServices bankTransactionServices) {
+        this.bankTransactionServices = bankTransactionServices;
     }
 
     // Runs every 60 seconds (60000 ms)
@@ -28,11 +28,11 @@ public class LiveTransactionSimulator {
         for (int i = 0; i < 5; i++) {
             BankTransactions tx = new BankTransactions();
             
-            // Random accounts between 1 and 4 (assuming seed_data.sql has accounts 1-4)
-            long fromAccount = random.nextInt(4) + 1;
-            long toAccount = random.nextInt(4) + 1;
+            // Random accounts from seeded dataset range.
+            long fromAccount = random.nextInt(20) + 1;
+            long toAccount = random.nextInt(20) + 1;
             while (fromAccount == toAccount) {
-                toAccount = random.nextInt(4) + 1;
+                toAccount = random.nextInt(20) + 1;
             }
             
             tx.setFromAccountId(fromAccount);
@@ -56,7 +56,7 @@ public class LiveTransactionSimulator {
                 tx.setStatus("FAILED");
             }
             
-            repository.save(tx);
+            bankTransactionServices.createTransaction(tx);
         }
         System.out.println("LiveTransactionSimulator: 5 transactions inserted successfully.");
     }

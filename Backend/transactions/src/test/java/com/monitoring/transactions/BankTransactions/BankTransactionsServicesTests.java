@@ -5,7 +5,10 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
+import com.monitoring.transactions.Alerts.AlertsService;
 import com.monitoring.transactions.Exception.GeneralizedException;
+import com.monitoring.transactions.Rules.RuleEngineService;
+import com.monitoring.transactions.Rules.Rules;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -18,6 +21,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -27,13 +32,20 @@ class BankTransactionsServicesTests {
     @Mock
     private BankTransactionsRepository bankTransactionsRepository;
 
+    @Mock
+    private RuleEngineService ruleEngineService;
+
+    @Mock
+    private AlertsService alertsService;
+
     private BankTransactionServices bankTransactionServices;
 
     private final LocalDateTime fixedTime = LocalDateTime.of(2026, 8, 1, 10, 0, 0);
 
     @BeforeEach
     void setUp() {
-        bankTransactionServices = new BankTransactionServices(bankTransactionsRepository);
+        bankTransactionServices = new BankTransactionServices(bankTransactionsRepository, ruleEngineService, alertsService);
+        lenient().when(ruleEngineService.evaluateIncomingTransaction(any(BankTransactions.class))).thenReturn(List.of());
     }
 
     @Test
@@ -90,13 +102,30 @@ class BankTransactionsServicesTests {
     @Test
     void createTransaction_savesValidTransactionAndNormalizesTextFields() {
         BankTransactions input = new BankTransactions(1L, 2L, new BigDecimal("55.50"), " usd ", fixedTime, " pending ");
-        BankTransactions saved = new BankTransactions(25L, 1L, 2L, new BigDecimal("55.50"), "USD", fixedTime, "PENDING", fixedTime);
+        BankTransactions saved = new BankTransactions(25L, 1L, 2L, new BigDecimal("55.50"), "USD", fixedTime, "COMPLETED", fixedTime);
         when(bankTransactionsRepository.save(any(BankTransactions.class))).thenReturn(saved);
 
         BankTransactions result = bankTransactionServices.createTransaction(input);
 
         assertThat(result.getId()).isEqualTo(25L);
+        assertThat(result.getStatus()).isEqualTo("COMPLETED");
         verify(bankTransactionsRepository).save(any(BankTransactions.class));
+        verify(alertsService, never()).createAlert(any());
+    }
+
+    @Test
+    void createTransaction_setsPendingAndCreatesAlertWhenRuleIsTriggered() {
+        BankTransactions input = new BankTransactions(1L, 2L, new BigDecimal("12000.00"), "USD", fixedTime, "COMPLETED");
+        Rules triggered = new Rules(1L, "Large Transaction", "AMOUNT_THRESHOLD", new BigDecimal("10000.00"), null, null, "HIGH", true);
+        BankTransactions saved = new BankTransactions(26L, 1L, 2L, new BigDecimal("12000.00"), "USD", fixedTime, "PENDING", fixedTime);
+
+        when(ruleEngineService.evaluateIncomingTransaction(any(BankTransactions.class))).thenReturn(List.of(triggered));
+        when(bankTransactionsRepository.save(any(BankTransactions.class))).thenReturn(saved);
+
+        BankTransactions result = bankTransactionServices.createTransaction(input);
+
+        assertThat(result.getStatus()).isEqualTo("PENDING");
+        verify(alertsService).createAlert(any());
     }
 
     @Test

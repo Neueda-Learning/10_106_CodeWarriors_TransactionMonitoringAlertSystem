@@ -40,6 +40,19 @@ public class AlertsRepository {
 			WHERE id = ?
 			""";
 
+	private static final String DELETE_ALERTS_BY_RULE_ID_SQL = """
+			DELETE FROM alerts
+			WHERE rule_id = ?
+			""";
+
+	private static final String COUNT_ACTIVE_ALERTS_BY_TX_AND_RULE_SQL = """
+			SELECT COUNT(*)
+			FROM alerts
+			WHERE transaction_id = ?
+			  AND rule_id = ?
+			  AND new_status IN ('OPEN', 'ACKNOWLEDGED', 'INVESTIGATING')
+			""";
+
 	private final JdbcTemplate jdbcTemplate;
 	private final RowMapper<Alerts> alertsRowMapper = new AlertsRowMapper();
 
@@ -72,6 +85,19 @@ public class AlertsRepository {
 
 	public int deleteAlert(Long id) {
 		return jdbcTemplate.update(DELETE_ALERT_SQL, id);
+	}
+
+	public int deleteAlertsByRuleId(Long ruleId) {
+		return jdbcTemplate.update(DELETE_ALERTS_BY_RULE_ID_SQL, ruleId);
+	}
+
+	public boolean hasActiveAlertForTransactionAndRule(Long transactionId, Long ruleId) {
+		Integer count = jdbcTemplate.queryForObject(
+			COUNT_ACTIVE_ALERTS_BY_TX_AND_RULE_SQL,
+			Integer.class,
+			transactionId,
+			ruleId);
+		return count != null && count > 0;
 	}
 
 	private static final class AlertsRowMapper implements RowMapper<Alerts> {

@@ -103,4 +103,9 @@ public class BankTransactionsRepository {
 		String sql = "DELETE FROM bank_transactions WHERE id = ?";
 		return jdbcTemplate.update(sql, id) > 0;
 	}
+
+	public boolean updateStatus(Long id, String status) {
+		String sql = "UPDATE bank_transactions SET status = ? WHERE id = ?";
+		return jdbcTemplate.update(sql, status, id) > 0;
+	}
 }

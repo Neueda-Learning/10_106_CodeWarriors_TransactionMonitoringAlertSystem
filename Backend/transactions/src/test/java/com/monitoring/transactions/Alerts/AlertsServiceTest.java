@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import java.util.List;
 
+import com.monitoring.transactions.BankTransactions.BankTransactionsRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,11 +28,14 @@ public class AlertsServiceTest {
 	@Mock
 	private Alerts alert;
 
+	@Mock
+	private BankTransactionsRepository bankTransactionsRepository;
+
 	private AlertsService alertsService;
 
 	@BeforeEach
 	void setUp() {
-		alertsService = new AlertsService(alertsRepository);
+		alertsService = new AlertsService(alertsRepository, bankTransactionsRepository);
 	}
 
 	@Test
@@ -138,31 +142,57 @@ public class AlertsServiceTest {
 
 	@Test
 	void updateAlertStatus_shouldTrimStatusAndReturnAffectedRows() {
-		when(alertsRepository.updateAlertStatus(5L, "PENDING", "RESOLVED")).thenReturn(1);
+		Alerts existing = new Alerts();
+		existing.setTransactionId(12L);
+		existing.setNewStatus("OPEN");
+		when(alertsRepository.getAlertById(5L)).thenReturn(existing);
+		when(alertsRepository.updateAlertStatus(5L, "OPEN", "ACKNOWLEDGED")).thenReturn(1);
+		when(bankTransactionsRepository.updateStatus(12L, "PENDING")).thenReturn(true);
 
-		int result = alertsService.updateAlertStatus(5L, "  PENDING  ", "  RESOLVED  ");
+		int result = alertsService.updateAlertStatus(5L, "  OPEN  ", "  ACKNOWLEDGED  ");
 
 		assertEquals(1, result);
-		verify(alertsRepository).updateAlertStatus(5L, "PENDING", "RESOLVED");
+		verify(alertsRepository).updateAlertStatus(5L, "OPEN", "ACKNOWLEDGED");
+		verify(bankTransactionsRepository).updateStatus(12L, "PENDING");
 	}
 
 	@Test
 	void updateAlertStatus_shouldThrowWhenRepositoryReturnsZero() {
-		when(alertsRepository.updateAlertStatus(5L, "PENDING", "RESOLVED")).thenReturn(0);
+		Alerts existing = new Alerts();
+		existing.setTransactionId(12L);
+		existing.setNewStatus("OPEN");
+		when(alertsRepository.getAlertById(5L)).thenReturn(existing);
+		when(alertsRepository.updateAlertStatus(5L, "OPEN", "ACKNOWLEDGED")).thenReturn(0);
 
 		RuntimeException exception = assertThrows(RuntimeException.class,
-				() -> alertsService.updateAlertStatus(5L, "PENDING", "RESOLVED"));
+				() -> alertsService.updateAlertStatus(5L, "OPEN", "ACKNOWLEDGED"));
 		assertEquals("Alert not found", exception.getMessage());
 	}
 
 	@Test
 	void updateAlertStatus_shouldThrowWhenRepositoryFails() {
-		when(alertsRepository.updateAlertStatus(5L, "PENDING", "RESOLVED"))
+		Alerts existing = new Alerts();
+		existing.setTransactionId(12L);
+		existing.setNewStatus("OPEN");
+		when(alertsRepository.getAlertById(5L)).thenReturn(existing);
+		when(alertsRepository.updateAlertStatus(5L, "OPEN", "ACKNOWLEDGED"))
 				.thenThrow(new DataRetrievalFailureException("DB error"));
 
 		RuntimeException exception = assertThrows(RuntimeException.class,
-				() -> alertsService.updateAlertStatus(5L, "PENDING", "RESOLVED"));
+				() -> alertsService.updateAlertStatus(5L, "OPEN", "ACKNOWLEDGED"));
 		assertEquals("Failed to update alert", exception.getMessage());
+	}
+
+	@Test
+	void updateAlertStatus_shouldRejectInvalidLifecycleTransition() {
+		Alerts existing = new Alerts();
+		existing.setTransactionId(22L);
+		existing.setNewStatus("OPEN");
+		when(alertsRepository.getAlertById(5L)).thenReturn(existing);
+
+		RuntimeException exception = assertThrows(RuntimeException.class,
+				() -> alertsService.updateAlertStatus(5L, "OPEN", "CLOSED"));
+		assertTrue(exception.getMessage().contains("Invalid alert status transition"));
 	}
 
 	@Test
