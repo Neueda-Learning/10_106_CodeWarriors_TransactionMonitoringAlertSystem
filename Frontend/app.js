@@ -41,6 +41,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let txStageChartInstance = null;
     let txVolumeChartInstance = null;
+    let alertSeverityChartInstance = null;
+    let alertStatusChartInstance = null;
+    let txAmountBucketChartInstance = null;
 
     function toNumber(value) {
         const parsed = Number(value);
@@ -181,6 +184,116 @@ document.addEventListener('DOMContentLoaded', () => {
                     }]
                 },
                 options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
+            });
+        }
+
+        const severityCounts = { HIGH: 0, MEDIUM: 0, LOW: 0 };
+        alerts.forEach(alert => {
+            if (severityCounts[alert.severity] !== undefined) {
+                severityCounts[alert.severity] += 1;
+            }
+        });
+
+        const severityCtx = document.getElementById('alertSeverityChart');
+        if (severityCtx) {
+            if (alertSeverityChartInstance) {
+                alertSeverityChartInstance.destroy();
+            }
+            alertSeverityChartInstance = new Chart(severityCtx, {
+                type: 'pie',
+                data: {
+                    labels: ['High', 'Medium', 'Low'],
+                    datasets: [{
+                        data: [severityCounts.HIGH, severityCounts.MEDIUM, severityCounts.LOW],
+                        backgroundColor: ['#dc3545', '#ffc107', '#0dcaf0']
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+        }
+
+        const alertStageCounts = { OPEN: 0, ACKNOWLEDGED: 0, INVESTIGATING: 0, CLOSED: 0, DISMISSED: 0 };
+        alerts.forEach(alert => {
+            if (alertStageCounts[alert.newStatus] !== undefined) {
+                alertStageCounts[alert.newStatus] += 1;
+            }
+        });
+
+        const alertStatusCtx = document.getElementById('alertStatusChart');
+        if (alertStatusCtx) {
+            if (alertStatusChartInstance) {
+                alertStatusChartInstance.destroy();
+            }
+            alertStatusChartInstance = new Chart(alertStatusCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['Open', 'Acknowledged', 'Investigating', 'Closed', 'Dismissed'],
+                    datasets: [{
+                        label: 'Alerts',
+                        data: [
+                            alertStageCounts.OPEN,
+                            alertStageCounts.ACKNOWLEDGED,
+                            alertStageCounts.INVESTIGATING,
+                            alertStageCounts.CLOSED,
+                            alertStageCounts.DISMISSED
+                        ],
+                        backgroundColor: ['#dc3545', '#ffc107', '#0dcaf0', '#6c757d', '#adb5bd'],
+                        borderRadius: 8,
+                        barThickness: 18
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { enabled: true }
+                    },
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            ticks: { precision: 0 }
+                        },
+                        y: {
+                            grid: { display: false }
+                        }
+                    }
+                }
+            });
+        }
+
+        const amountBucketCounts = { UNDER_500: 0, BETWEEN_500_2000: 0, OVER_2000: 0 };
+        transactions.forEach(tx => {
+            const amount = toNumber(tx.amount);
+            if (amount < 500) {
+                amountBucketCounts.UNDER_500 += 1;
+            } else if (amount <= 2000) {
+                amountBucketCounts.BETWEEN_500_2000 += 1;
+            } else {
+                amountBucketCounts.OVER_2000 += 1;
+            }
+        });
+
+        const txBucketCtx = document.getElementById('txAmountBucketChart');
+        if (txBucketCtx) {
+            if (txAmountBucketChartInstance) {
+                txAmountBucketChartInstance.destroy();
+            }
+            txAmountBucketChartInstance = new Chart(txBucketCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['< $500', '$500 - $2,000', '> $2,000'],
+                    datasets: [{
+                        data: [
+                            amountBucketCounts.UNDER_500,
+                            amountBucketCounts.BETWEEN_500_2000,
+                            amountBucketCounts.OVER_2000
+                        ],
+                        backgroundColor: ['#20c997', '#0d6efd', '#6610f2']
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
             });
         }
     }
