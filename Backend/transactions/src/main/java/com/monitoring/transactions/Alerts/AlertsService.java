@@ -45,8 +45,18 @@ public class AlertsService {
 	}
 
 	public List<Alerts> getAllAlerts() {
+		return getAllAlerts(null, null);
+	}
+
+	public List<Alerts> getAllAlerts(String status, String severity) {
+		String normalizedStatus = normalizeFilter(status);
+		String normalizedSeverity = normalizeFilter(severity);
+
 		try {
-			return alertsRepository.getAllAlerts();
+			if (normalizedStatus == null && normalizedSeverity == null) {
+				return alertsRepository.getAllAlerts();
+			}
+			return alertsRepository.getAlertsByFilters(normalizedStatus, normalizedSeverity);
 		} catch (DataAccessException exception) {
 			throw new GeneralizedException("Failed to fetch alerts", exception, HttpStatus.INTERNAL_SERVER_ERROR);
 		}
@@ -157,6 +167,13 @@ public class AlertsService {
 			return "OPEN";
 		}
 		return status.trim().toUpperCase(Locale.ROOT);
+	}
+
+	private String normalizeFilter(String value) {
+		if (value == null || value.isBlank() || "ALL".equalsIgnoreCase(value.trim())) {
+			return null;
+		}
+		return value.trim().toUpperCase(Locale.ROOT);
 	}
 
 	private void updateLinkedTransactionStatus(Long transactionId, String targetStatus) {

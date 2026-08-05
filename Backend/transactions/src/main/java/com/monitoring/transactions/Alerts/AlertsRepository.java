@@ -2,6 +2,7 @@ package com.monitoring.transactions.Alerts;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.List;
 
 import org.springframework.jdbc.core.RowMapper;
@@ -73,6 +74,26 @@ public class AlertsRepository {
 
 	public List<Alerts> getAllAlerts() {
 		return jdbcTemplate.query(SELECT_ALL_ALERTS_SQL, alertsRowMapper);
+	}
+
+	public List<Alerts> getAlertsByFilters(String status, String severity) {
+		StringBuilder sql = new StringBuilder(
+				"SELECT id, transaction_id, rule_id, alert_reason, severity, old_status, new_status, created_at, updated_at " +
+				"FROM alerts WHERE 1=1");
+		List<Object> params = new ArrayList<>();
+
+		if (status != null) {
+			sql.append(" AND new_status = ?");
+			params.add(status);
+		}
+
+		if (severity != null) {
+			sql.append(" AND severity = ?");
+			params.add(severity);
+		}
+
+		sql.append(" ORDER BY created_at DESC");
+		return jdbcTemplate.query(sql.toString(), alertsRowMapper, params.toArray());
 	}
 
 	public Alerts getAlertById(Long id) {
