@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 import java.util.List;
 
 import com.monitoring.transactions.BankTransactions.BankTransactionsRepository;
+import com.monitoring.transactions.Exception.GeneralizedException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -18,6 +19,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataRetrievalFailureException;
 import org.springframework.dao.EmptyResultDataAccessException;
+import org.springframework.http.HttpStatus;
 
 @ExtendWith(MockitoExtension.class)
 public class AlertsServiceTest {
@@ -226,5 +228,108 @@ public class AlertsServiceTest {
 
 		RuntimeException exception = assertThrows(RuntimeException.class, () -> alertsService.deleteAlert(7L));
 		assertEquals("Failed to delete alert", exception.getMessage());
+	}
+
+	@Test
+	void updateAlertStatus_shouldReturnConflictWhenCurrentStatusDiffersFromPayloadOldStatus() {
+		Alerts existing = new Alerts();
+		existing.setTransactionId(30L);
+		existing.setNewStatus("ACKNOWLEDGED");
+		when(alertsRepository.getAlertById(9L)).thenReturn(existing);
+
+		RuntimeException exception = assertThrows(RuntimeException.class,
+				() -> alertsService.updateAlertStatus(9L, "OPEN", "INVESTIGATING"));
+		assertEquals("Alert status mismatch. Refresh data and retry.", exception.getMessage());
+		assertTrue(exception instanceof GeneralizedException);
+		assertEquals(HttpStatus.CONFLICT, ((GeneralizedException) exception).getStatus());
+	}
+
+	@Test
+	void updateAlertStatus_shouldMoveToInvestigatingAndKeepTransactionPending() {
+		Alerts existing = new Alerts();
+		existing.setTransactionId(40L);
+		existing.setNewStatus("ACKNOWLEDGED");
+		when(alertsRepository.getAlertById(6L)).thenReturn(existing);
+		when(alertsRepository.updateAlertStatus(6L, "ACKNOWLEDGED", "INVESTIGATING")).thenReturn(1);
+		when(bankTransactionsRepository.updateStatus(40L, "PENDING")).thenReturn(true);
+
+		int result = alertsService.updateAlertStatus(6L, "ACKNOWLEDGED", "INVESTIGATING");
+
+		assertEquals(1, result);
+		verify(alertsRepository).updateAlertStatus(6L, "ACKNOWLEDGED", "INVESTIGATING");
+		verify(bankTransactionsRepository).updateStatus(40L, "PENDING");
+	}
+
+	@Test
+	void updateAlertStatus_shouldCloseAlertAndMarkLinkedTransactionCompleted() {
+		Alerts existing = new Alerts();
+		existing.setTransactionId(41L);
+		existing.setNewStatus("INVESTIGATING");
+		when(alertsRepository.getAlertById(11L)).thenReturn(existing);
+		when(alertsRepository.updateAlertStatus(11L, "INVESTIGATING", "CLOSED")).thenReturn(1);
+		when(bankTransactionsRepository.updateStatus(41L, "COMPLETED")).thenReturn(true);
+
+		int result = alertsService.updateAlertStatus(11L, "INVESTIGATING", "CLOSED");
+
+		assertEquals(1, result);
+		verify(bankTransactionsRepository).updateStatus(41L, "COMPLETED");
+	}
+
+	@Test
+	void updateAlertStatus_shouldDismissAlertAndMarkLinkedTransactionFailed() {
+		Alerts existing = new Alerts();
+		existing.setTransactionId(42L);
+		existing.setNewStatus("INVESTIGATING");
+		when(alertsRepository.getAlertById(12L)).thenReturn(existing);
+		when(alertsRepository.updateAlertStatus(12L, "INVESTIGATING", "DISMISSED")).thenReturn(1);
+		when(bankTransactionsRepository.updateStatus(42L, "FAILED")).thenReturn(true);
+
+		int result = alertsService.updateAlertStatus(12L, "INVESTIGATING", "DISMISSED");
+
+		assertEquals(1, result);
+		verify(bankTransactionsRepository).updateStatus(42L, "FAILED");
+	}
+
+	@Test
+	void updateAlertStatus_shouldThrowWhenLinkedTransactionCannotBeUpdated() {
+		Alerts existing = new Alerts();
+		existing.setTransactionId(77L);
+		existing.setNewStatus("INVESTIGATING");
+		when(alertsRepository.getAlertById(13L)).thenReturn(existing);
+		when(alertsRepository.updateAlertStatus(13L, "INVESTIGATING", "CLOSED")).thenReturn(1);
+		when(bankTransactionsRepository.updateStatus(77L, "COMPLETED")).thenReturn(false);
+
+		RuntimeException exception = assertThrows(RuntimeException.class,
+				() -> alertsService.updateAlertStatus(13L, "INVESTIGATING", "CLOSED"));
+		assertEquals("Linked transaction not found", exception.getMessage());
+	}
+
+	@Test
+	void updateAlertStatus_shouldSkipTransactionUpdateWhenAlertHasNoLinkedTransactionId() {
+		Alerts existing = new Alerts();
+		existing.setTransactionId(null);
+		existing.setNewStatus("OPEN");
+		when(alertsRepository.getAlertById(14L)).thenReturn(existing);
+		when(alertsRepository.updateAlertStatus(14L, "OPEN", "ACKNOWLEDGED")).thenReturn(1);
+
+		int result = alertsService.updateAlertStatus(14L, "OPEN", "ACKNOWLEDGED");
+
+		assertEquals(1, result);
+		verifyNoInteractions(bankTransactionsRepository);
+	}
+
+	@Test
+	void updateAlertStatus_shouldTreatBlankCurrentStatusAsOpen() {
+		Alerts existing = new Alerts();
+		existing.setTransactionId(15L);
+		existing.setNewStatus("   ");
+		when(alertsRepository.getAlertById(15L)).thenReturn(existing);
+		when(alertsRepository.updateAlertStatus(15L, "OPEN", "ACKNOWLEDGED")).thenReturn(1);
+		when(bankTransactionsRepository.updateStatus(15L, "PENDING")).thenReturn(true);
+
+		int result = alertsService.updateAlertStatus(15L, "OPEN", "ACKNOWLEDGED");
+
+		assertEquals(1, result);
+		verify(alertsRepository).updateAlertStatus(15L, "OPEN", "ACKNOWLEDGED");
 	}
 }

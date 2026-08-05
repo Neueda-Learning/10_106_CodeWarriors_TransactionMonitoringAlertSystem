@@ -67,6 +67,16 @@ class RulesControllerTests {
     }
 
     @Test
+    void getAllRules_returns500WhenServiceFails() throws Exception {
+        when(rulesServices.getAllRules())
+                .thenThrow(new GeneralizedException("Unable to fetch rules.", HttpStatus.INTERNAL_SERVER_ERROR));
+
+        mockMvc.perform(get("/rules"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.status").value(500));
+    }
+
+    @Test
     void getRuleById_returns200WhenFound() throws Exception {
         Rules expected = new Rules(1L, "Large Transaction", "AMOUNT_THRESHOLD", new BigDecimal("10000.00"), null, null, "HIGH", true);
         when(rulesServices.getRuleById(1L)).thenReturn(expected);
@@ -185,6 +195,31 @@ class RulesControllerTests {
     }
 
     @Test
+    void updateRule_returns400WhenBodyMalformed() throws Exception {
+        mockMvc.perform(put("/rules/2")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("invalid-json"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void updateRule_returns500WhenServiceFails() throws Exception {
+        when(rulesServices.updateRule(eq(2L), any(Rules.class)))
+                .thenThrow(new GeneralizedException("Unable to update rule.", HttpStatus.INTERNAL_SERVER_ERROR));
+
+        mockMvc.perform(put("/rules/2")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "Updated Rule",
+                                  "type": "VELOCITY"
+                                }
+                                """))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.status").value(500));
+    }
+
+    @Test
     void deleteRule_returns204WhenDeleted() throws Exception {
         doNothing().when(rulesServices).deleteRule(3L);
 
@@ -202,5 +237,15 @@ class RulesControllerTests {
         mockMvc.perform(delete("/rules/3"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value(404));
+    }
+
+    @Test
+    void deleteRule_returns500WhenServiceFails() throws Exception {
+        doThrow(new GeneralizedException("Unable to delete rule.", HttpStatus.INTERNAL_SERVER_ERROR))
+                .when(rulesServices).deleteRule(3L);
+
+        mockMvc.perform(delete("/rules/3"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.status").value(500));
     }
 }

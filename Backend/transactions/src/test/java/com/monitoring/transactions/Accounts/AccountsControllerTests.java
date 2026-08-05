@@ -63,6 +63,16 @@ class AccountsControllerTests {
     }
 
     @Test
+    void getAllAccounts_returns500WhenServiceFails() throws Exception {
+        when(accountsServices.getAllAccounts())
+                .thenThrow(new GeneralizedException("Unable to fetch accounts.", HttpStatus.INTERNAL_SERVER_ERROR));
+
+        mockMvc.perform(get("/accounts"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.status").value(500));
+    }
+
+    @Test
     void getAccountById_returns200WithAccount() throws Exception {
         Accounts account = new Accounts(5L, "Customer 5", "CORPORATE", "CA", fixedTime);
         when(accountsServices.getAccountById(5L)).thenReturn(account);
@@ -161,6 +171,28 @@ class AccountsControllerTests {
     }
 
     @Test
+    void updateAccount_returns400WhenIdIsInvalid() throws Exception {
+        when(accountsServices.updateAccount(eq(0L), any(Accounts.class)))
+                .thenThrow(new GeneralizedException("Account id must be a positive number.", HttpStatus.BAD_REQUEST));
+
+        mockMvc.perform(put("/accounts/0")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"customerName":"Updated Name","accountType":"CHECKING","country":"US"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400));
+    }
+
+    @Test
+    void updateAccount_returns400WhenBodyIsMalformed() throws Exception {
+        mockMvc.perform(put("/accounts/3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("invalid-json"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void deleteAccount_returns204WhenDeleted() throws Exception {
         doNothing().when(accountsServices).deleteAccount(7L);
 
@@ -177,5 +209,29 @@ class AccountsControllerTests {
 
         mockMvc.perform(delete("/accounts/999"))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void deleteAccount_returns400WhenIdIsInvalid() throws Exception {
+        doThrow(new GeneralizedException("Account id must be a positive number.", HttpStatus.BAD_REQUEST))
+                .when(accountsServices).deleteAccount(0L);
+
+        mockMvc.perform(delete("/accounts/0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400));
+    }
+
+    @Test
+    void createAccount_returns500WhenServiceThrowsUnexpectedError() throws Exception {
+        when(accountsServices.createAccount(any(Accounts.class)))
+                .thenThrow(new GeneralizedException("Unable to create account.", HttpStatus.INTERNAL_SERVER_ERROR));
+
+        mockMvc.perform(post("/accounts")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"customerName":"Customer","accountType":"CHECKING","country":"US"}
+                                """))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.status").value(500));
     }
 }

@@ -100,6 +100,16 @@ class BankTransactionsServicesTests {
     }
 
     @Test
+    void getTransactionById_throwsInternalServerErrorWhenRepositoryFails() {
+        when(bankTransactionsRepository.findById(1L)).thenThrow(new DataAccessResourceFailureException("DB error"));
+
+        assertThatThrownBy(() -> bankTransactionServices.getTransactionById(1L))
+                .isInstanceOf(GeneralizedException.class)
+                .satisfies(ex -> assertThat(((GeneralizedException) ex).getStatus())
+                        .isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR));
+    }
+
+    @Test
     void createTransaction_savesValidTransactionAndNormalizesTextFields() {
         BankTransactions input = new BankTransactions(1L, 2L, new BigDecimal("55.50"), " usd ", fixedTime, " pending ");
         BankTransactions saved = new BankTransactions(25L, 1L, 2L, new BigDecimal("55.50"), "USD", fixedTime, "COMPLETED", fixedTime);
@@ -126,6 +136,51 @@ class BankTransactionsServicesTests {
 
         assertThat(result.getStatus()).isEqualTo("PENDING");
         verify(alertsService).createAlert(any());
+    }
+
+    @Test
+    void createTransaction_keepsFailedStatusEvenWhenRulesTrigger() {
+        BankTransactions input = new BankTransactions(1L, 2L, new BigDecimal("14000.00"), "USD", fixedTime, "FAILED");
+        Rules triggered = new Rules(1L, "Large Transaction", "AMOUNT_THRESHOLD", new BigDecimal("10000.00"), null, null, "HIGH", true);
+        BankTransactions saved = new BankTransactions(27L, 1L, 2L, new BigDecimal("14000.00"), "USD", fixedTime, "FAILED", fixedTime);
+
+        when(ruleEngineService.evaluateIncomingTransaction(any(BankTransactions.class))).thenReturn(List.of(triggered));
+        when(bankTransactionsRepository.save(any(BankTransactions.class))).thenReturn(saved);
+
+        BankTransactions result = bankTransactionServices.createTransaction(input);
+
+        assertThat(result.getStatus()).isEqualTo("FAILED");
+        verify(alertsService).createAlert(any());
+    }
+
+    @Test
+    void createTransaction_throwsInternalServerErrorWhenRuleEngineFailsUnexpectedly() {
+        BankTransactions input = new BankTransactions(1L, 2L, new BigDecimal("20.00"), "USD", fixedTime, "PENDING");
+        when(ruleEngineService.evaluateIncomingTransaction(any(BankTransactions.class)))
+                .thenThrow(new IllegalStateException("Rule engine unavailable"));
+
+        assertThatThrownBy(() -> bankTransactionServices.createTransaction(input))
+                .isInstanceOf(GeneralizedException.class)
+                .satisfies(ex -> {
+                    GeneralizedException gex = (GeneralizedException) ex;
+                    assertThat(gex.getStatus()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+                    assertThat(gex.getMessage()).isEqualTo("Unable to evaluate transaction against monitoring rules.");
+                });
+    }
+
+    @Test
+    void createTransaction_propagatesGeneralizedExceptionFromAlertCreation() {
+        BankTransactions input = new BankTransactions(1L, 2L, new BigDecimal("12000.00"), "USD", fixedTime, "COMPLETED");
+        Rules triggered = new Rules(1L, "Large Transaction", "AMOUNT_THRESHOLD", new BigDecimal("10000.00"), null, null, "HIGH", true);
+        BankTransactions saved = new BankTransactions(28L, 1L, 2L, new BigDecimal("12000.00"), "USD", fixedTime, "PENDING", fixedTime);
+
+        when(ruleEngineService.evaluateIncomingTransaction(any(BankTransactions.class))).thenReturn(List.of(triggered));
+        when(bankTransactionsRepository.save(any(BankTransactions.class))).thenReturn(saved);
+        when(alertsService.createAlert(any())).thenThrow(new GeneralizedException("Failed to create alert", HttpStatus.INTERNAL_SERVER_ERROR));
+
+        assertThatThrownBy(() -> bankTransactionServices.createTransaction(input))
+                .isInstanceOf(GeneralizedException.class)
+                .satisfies(ex -> assertThat(((GeneralizedException) ex).getMessage()).isEqualTo("Failed to create alert"));
     }
 
     @Test
@@ -197,6 +252,14 @@ class BankTransactionsServicesTests {
         BankTransactions input = new BankTransactions(1L, 2L, new BigDecimal("20.00"), "USD", fixedTime, "PENDING");
 
         assertThatThrownBy(() -> bankTransactionServices.updateTransaction(-2L, input))
+                .isInstanceOf(GeneralizedException.class)
+                .satisfies(ex -> assertThat(((GeneralizedException) ex).getStatus())
+                        .isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    @Test
+    void updateTransaction_throwsBadRequestWhenPayloadIsNull() {
+        assertThatThrownBy(() -> bankTransactionServices.updateTransaction(1L, null))
                 .isInstanceOf(GeneralizedException.class)
                 .satisfies(ex -> assertThat(((GeneralizedException) ex).getStatus())
                         .isEqualTo(HttpStatus.BAD_REQUEST));

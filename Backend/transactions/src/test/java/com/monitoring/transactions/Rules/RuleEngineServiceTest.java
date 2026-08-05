@@ -199,4 +199,66 @@ public class RuleEngineServiceTest {
 
 		assertTrue(triggered.isEmpty());
 	}
+
+	@Test
+	void testEvaluateIncomingTransaction_IgnoresInactiveRules() {
+		Rules inactiveRule = new Rules();
+		inactiveRule.setId(5L);
+		inactiveRule.setType("AMOUNT_THRESHOLD");
+		inactiveRule.setThreshold(new BigDecimal("1000.00"));
+		inactiveRule.setActive(false);
+
+		when(rulesRepository.findAll()).thenReturn(List.of(inactiveRule));
+		when(bankTransactionsRepository.findAll()).thenReturn(Collections.emptyList());
+
+		BankTransactions incoming = createTransaction(null, 1L, 2L, new BigDecimal("5000.00"), LocalDateTime.now());
+		List<Rules> triggered = ruleEngineService.evaluateIncomingTransaction(incoming);
+
+		assertTrue(triggered.isEmpty());
+	}
+
+	@Test
+	void testEvaluateIncomingTransaction_UnknownRuleType_DoesNotTrigger() {
+		Rules rule = new Rules();
+		rule.setId(6L);
+		rule.setType("SOME_UNKNOWN_TYPE");
+		rule.setActive(true);
+
+		when(rulesRepository.findAll()).thenReturn(List.of(rule));
+		when(bankTransactionsRepository.findAll()).thenReturn(Collections.emptyList());
+
+		BankTransactions incoming = createTransaction(null, 1L, 2L, new BigDecimal("99999.00"), LocalDateTime.now());
+		List<Rules> triggered = ruleEngineService.evaluateIncomingTransaction(incoming);
+
+		assertTrue(triggered.isEmpty());
+	}
+
+	@Test
+	void testEvaluateIncomingTransaction_AmountEqualToThreshold_DoesNotTrigger() {
+		Rules rule = new Rules();
+		rule.setId(7L);
+		rule.setType("AMOUNT_THRESHOLD");
+		rule.setThreshold(new BigDecimal("10000.00"));
+		rule.setActive(true);
+
+		when(rulesRepository.findAll()).thenReturn(List.of(rule));
+		when(bankTransactionsRepository.findAll()).thenReturn(Collections.emptyList());
+
+		BankTransactions incoming = createTransaction(null, 1L, 2L, new BigDecimal("10000.00"), LocalDateTime.now());
+		List<Rules> triggered = ruleEngineService.evaluateIncomingTransaction(incoming);
+
+		assertTrue(triggered.isEmpty());
+	}
+
+	@Test
+	void testBuildAlertReason_FallsBackToGenericReason() {
+		Rules rule = new Rules();
+		rule.setName("Custom Rule");
+		rule.setType("UNKNOWN");
+
+		String reason = ruleEngineService.buildAlertReason(rule);
+
+		assertTrue(reason.contains("Transaction violated monitoring rule"));
+		assertTrue(reason.contains("Custom Rule"));
+	}
 }

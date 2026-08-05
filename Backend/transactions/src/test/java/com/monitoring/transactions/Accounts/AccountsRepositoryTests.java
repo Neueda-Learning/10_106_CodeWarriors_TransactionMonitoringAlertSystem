@@ -88,6 +88,19 @@ class AccountsRepositoryTests {
     }
 
     @Test
+    void findById_returnsFirstAccountWhenMultipleRowsReturned() {
+        Accounts first = new Accounts(5L, "Customer 5", "CORPORATE", "CA", fixedTime);
+        Accounts second = new Accounts(5L, "Customer 5 Duplicate", "CORPORATE", "CA", fixedTime);
+        when(jdbcTemplate.query(anyString(), ArgumentMatchers.<RowMapper<Accounts>>any(), eq(5L)))
+                .thenReturn(List.of(first, second));
+
+        Optional<Accounts> result = accountsRepository.findById(5L);
+
+        assertThat(result).isPresent();
+        assertThat(result.get().getCustomerName()).isEqualTo("Customer 5");
+    }
+
+    @Test
     void save_returnsPersistedAccountWithGeneratedId() {
         Accounts input = new Accounts("New Customer", "SAVINGS", "UK");
         Accounts saved = new Accounts(42L, "New Customer", "SAVINGS", "UK", fixedTime);
@@ -121,6 +134,44 @@ class AccountsRepositoryTests {
     }
 
     @Test
+    void save_returnsInputAccountWhenGeneratedKeyCannotBeReloaded() {
+        Accounts input = new Accounts("Reload Missing", "SAVINGS", "US");
+
+        doAnswer(invocation -> {
+            KeyHolder keyHolder = invocation.getArgument(1);
+            ((GeneratedKeyHolder) keyHolder).getKeyList().add(java.util.Map.of("GENERATED_KEY", 88L));
+            return 1;
+        }).when(jdbcTemplate).update(any(PreparedStatementCreator.class), any(KeyHolder.class));
+
+        when(jdbcTemplate.query(anyString(), ArgumentMatchers.<RowMapper<Accounts>>any(), eq(88L)))
+                .thenReturn(List.of());
+
+        Accounts result = accountsRepository.save(input);
+
+        assertThat(result).isSameAs(input);
+    }
+
+    @Test
+    void save_persistsAccountWithNullCountry() {
+        Accounts input = new Accounts("No Country Customer", "CHECKING", null);
+        Accounts saved = new Accounts(77L, "No Country Customer", "CHECKING", null, fixedTime);
+
+        doAnswer(invocation -> {
+            KeyHolder keyHolder = invocation.getArgument(1);
+            ((GeneratedKeyHolder) keyHolder).getKeyList().add(java.util.Map.of("GENERATED_KEY", 77L));
+            return 1;
+        }).when(jdbcTemplate).update(any(PreparedStatementCreator.class), any(KeyHolder.class));
+
+        when(jdbcTemplate.query(anyString(), ArgumentMatchers.<RowMapper<Accounts>>any(), eq(77L)))
+                .thenReturn(List.of(saved));
+
+        Accounts result = accountsRepository.save(input);
+
+        assertThat(result.getId()).isEqualTo(77L);
+        assertThat(result.getCountry()).isNull();
+    }
+
+    @Test
     void update_returnsTrueWhenRowIsUpdated() {
         Accounts account = new Accounts("Updated Name", "CORPORATE", "AU");
         when(jdbcTemplate.update(anyString(),
@@ -142,6 +193,18 @@ class AccountsRepositoryTests {
         boolean result = accountsRepository.update(999L, account);
 
         assertThat(result).isFalse();
+    }
+
+    @Test
+    void update_allowsNullCountry() {
+        Accounts account = new Accounts("Updated Name", "CHECKING", null);
+        when(jdbcTemplate.update(anyString(),
+                eq("Updated Name"), eq("CHECKING"), isNull(), eq(12L)))
+                .thenReturn(1);
+
+        boolean result = accountsRepository.update(12L, account);
+
+        assertThat(result).isTrue();
     }
 
     @Test

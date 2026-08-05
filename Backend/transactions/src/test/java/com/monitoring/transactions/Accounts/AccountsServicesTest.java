@@ -105,6 +105,14 @@ class AccountsServicesTest {
     }
 
     @Test
+    void getAccountById_throwsBadRequestForNullId() {
+        assertThatThrownBy(() -> accountsServices.getAccountById(null))
+                .isInstanceOf(GeneralizedException.class)
+                .satisfies(ex -> assertThat(((GeneralizedException) ex).getStatus())
+                        .isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    @Test
     void getAccountById_throwsInternalErrorWhenDatabaseFails() {
         when(accountsRepository.findById(1L)).thenThrow(new DataAccessResourceFailureException("DB down"));
 
@@ -227,6 +235,27 @@ class AccountsServicesTest {
     }
 
     @Test
+    void createAccount_throwsBadRequestWhenPayloadIsNull() {
+        assertThatThrownBy(() -> accountsServices.createAccount(null))
+                .isInstanceOf(GeneralizedException.class)
+                .satisfies(ex -> {
+                    GeneralizedException gex = (GeneralizedException) ex;
+                    assertThat(gex.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(gex.getMessage()).isEqualTo("Account payload is required.");
+                });
+    }
+
+    @Test
+    void createAccount_throwsBadRequestWhenAccountTypeIsBlank() {
+        Accounts input = new Accounts("Customer", "   ", "US");
+
+        assertThatThrownBy(() -> accountsServices.createAccount(input))
+                .isInstanceOf(GeneralizedException.class)
+                .satisfies(ex -> assertThat(((GeneralizedException) ex).getDetails())
+                        .containsKey("accountType"));
+    }
+
+    @Test
     void createAccount_collectsMultipleValidationErrors() {
         Accounts input = new Accounts(null, "BAD_TYPE", "US");
 
@@ -296,6 +325,54 @@ class AccountsServicesTest {
     }
 
     @Test
+    void updateAccount_throwsBadRequestWhenPayloadIsNull() {
+        assertThatThrownBy(() -> accountsServices.updateAccount(1L, null))
+                .isInstanceOf(GeneralizedException.class)
+                .satisfies(ex -> assertThat(((GeneralizedException) ex).getStatus())
+                        .isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    @Test
+    void updateAccount_throwsNotFoundWhenUpdatedAccountCannotBeReloaded() {
+        Accounts input = new Accounts("Updated", "CHECKING", "US");
+        when(accountsRepository.update(eq(33L), any(Accounts.class))).thenReturn(true);
+        when(accountsRepository.findById(33L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> accountsServices.updateAccount(33L, input))
+                .isInstanceOf(GeneralizedException.class)
+                .satisfies(ex -> assertThat(((GeneralizedException) ex).getStatus())
+                        .isEqualTo(HttpStatus.NOT_FOUND));
+    }
+
+    @Test
+    void updateAccount_trimsAndNormalizesFieldsBeforeSaving() {
+        Accounts input = new Accounts("  Updated Name  ", "  checking  ", "  us  ");
+        Accounts updated = new Accounts(21L, "Updated Name", "CHECKING", "us", fixedTime);
+
+        when(accountsRepository.update(eq(21L), any(Accounts.class))).thenReturn(true);
+        when(accountsRepository.findById(21L)).thenReturn(Optional.of(updated));
+
+        accountsServices.updateAccount(21L, input);
+
+        verify(accountsRepository).update(eq(21L), argThat(account ->
+                "Updated Name".equals(account.getCustomerName()) &&
+                "CHECKING".equals(account.getAccountType()) &&
+                "us".equals(account.getCountry())));
+    }
+
+    @Test
+    void updateAccount_throwsInternalErrorWhenDatabaseFails() {
+        Accounts input = new Accounts("Updated", "SAVINGS", "US");
+        when(accountsRepository.update(eq(5L), any(Accounts.class)))
+                .thenThrow(new DataAccessResourceFailureException("DB down"));
+
+        assertThatThrownBy(() -> accountsServices.updateAccount(5L, input))
+                .isInstanceOf(GeneralizedException.class)
+                .satisfies(ex -> assertThat(((GeneralizedException) ex).getStatus())
+                        .isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR));
+    }
+
+    @Test
     void deleteAccount_deletesSuccessfully() {
         when(accountsRepository.deleteById(5L)).thenReturn(true);
 
@@ -317,6 +394,14 @@ class AccountsServicesTest {
     @Test
     void deleteAccount_throwsBadRequestForInvalidId() {
         assertThatThrownBy(() -> accountsServices.deleteAccount(-5L))
+                .isInstanceOf(GeneralizedException.class)
+                .satisfies(ex -> assertThat(((GeneralizedException) ex).getStatus())
+                        .isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    @Test
+    void deleteAccount_throwsBadRequestForNullId() {
+        assertThatThrownBy(() -> accountsServices.deleteAccount(null))
                 .isInstanceOf(GeneralizedException.class)
                 .satisfies(ex -> assertThat(((GeneralizedException) ex).getStatus())
                         .isEqualTo(HttpStatus.BAD_REQUEST));

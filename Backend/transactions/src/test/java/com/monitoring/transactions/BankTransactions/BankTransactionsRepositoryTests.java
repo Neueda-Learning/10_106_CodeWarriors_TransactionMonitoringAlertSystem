@@ -121,6 +121,24 @@ class BankTransactionsRepositoryTests {
     }
 
     @Test
+    void save_returnsInputTransactionWhenGeneratedIdCannotBeReloaded() {
+        BankTransactions input = new BankTransactions(6L, 8L, new BigDecimal("80.00"), "EUR", fixedTime, "COMPLETED");
+
+        doAnswer(invocation -> {
+            KeyHolder keyHolder = invocation.getArgument(1);
+            ((GeneratedKeyHolder) keyHolder).getKeyList().add(java.util.Map.of("GENERATED_KEY", 66L));
+            return 1;
+        }).when(jdbcTemplate).update(any(PreparedStatementCreator.class), any(KeyHolder.class));
+
+        when(jdbcTemplate.query(anyString(), ArgumentMatchers.<RowMapper<BankTransactions>>any(), eq(66L)))
+                .thenReturn(List.of());
+
+        BankTransactions result = bankTransactionsRepository.save(input);
+
+        assertThat(result).isSameAs(input);
+    }
+
+    @Test
     void update_returnsTrueWhenRowUpdated() {
         BankTransactions input = new BankTransactions(1L, 2L, new BigDecimal("999.99"), "USD", fixedTime, "COMPLETED");
         when(jdbcTemplate.update(anyString(), eq(1L), eq(2L), eq(new BigDecimal("999.99")), eq("USD"), any(), eq("COMPLETED"), eq(10L)))
@@ -156,6 +174,24 @@ class BankTransactionsRepositoryTests {
         when(jdbcTemplate.update(anyString(), eq(777L))).thenReturn(0);
 
         boolean result = bankTransactionsRepository.deleteById(777L);
+
+        assertThat(result).isFalse();
+    }
+
+    @Test
+    void updateStatus_returnsTrueWhenStatusUpdated() {
+        when(jdbcTemplate.update(anyString(), eq("FAILED"), eq(22L))).thenReturn(1);
+
+        boolean result = bankTransactionsRepository.updateStatus(22L, "FAILED");
+
+        assertThat(result).isTrue();
+    }
+
+    @Test
+    void updateStatus_returnsFalseWhenTransactionNotFound() {
+        when(jdbcTemplate.update(anyString(), eq("COMPLETED"), eq(999L))).thenReturn(0);
+
+        boolean result = bankTransactionsRepository.updateStatus(999L, "COMPLETED");
 
         assertThat(result).isFalse();
     }
