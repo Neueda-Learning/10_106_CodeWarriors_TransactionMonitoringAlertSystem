@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@CrossOrigin(origins = {"http://localhost:8090", "http://10.9.73.115:8090"})
+@CrossOrigin(origins = "*")
 @RequestMapping("/alerts")
 public class AlertsController {
 
