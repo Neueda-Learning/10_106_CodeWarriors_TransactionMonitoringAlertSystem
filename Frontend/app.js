@@ -606,7 +606,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
 
-    const API_BASE_URL = window.localStorage.getItem('apiBaseUrl') || 'http://localhost:8085';
+    const API_BASE_URL = window.localStorage.getItem('apiBaseUrl') || 'http://10.9.65.182:8085';
 
     const RULE_TYPES = [
         { value: 'AMOUNT_THRESHOLD', label: 'Amount Threshold' },
