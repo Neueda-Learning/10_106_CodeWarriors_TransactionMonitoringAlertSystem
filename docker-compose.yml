@@ -47,7 +47,7 @@ services:
       SPRING_SQL_INIT_MODE: always
       SPRING_SQL_INIT_SCHEMA_LOCATIONS: classpath:schema.sql
       SPRING_SQL_INIT_DATA_LOCATIONS: classpath:seed_data.sql
-      FRONTEND_URL: http://localhost:8090
+      FRONTEND_URL: http://10.9.73.115:8090
       SPRING_PROFILES_ACTIVE: docker
       SERVER_PORT: 8085
     ports:

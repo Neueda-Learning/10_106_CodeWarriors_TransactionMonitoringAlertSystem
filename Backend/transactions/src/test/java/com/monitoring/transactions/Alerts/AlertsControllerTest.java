@@ -104,7 +104,7 @@ class AlertsControllerTest {
 
     @Test
     void getAllAlerts_shouldReturnOkAndAlertsList() throws Exception {
-        when(alertsService.getAllAlerts()).thenReturn(List.of(new Alerts(), new Alerts()));
+        when(alertsService.getAllAlerts(any(), any())).thenReturn(List.of(new Alerts(), new Alerts()));
 
         mockMvc.perform(get("/alerts"))
                 .andExpect(status().isOk())
@@ -112,12 +112,12 @@ class AlertsControllerTest {
                 .andExpect(jsonPath("$").isArray())
                 .andExpect(jsonPath("$.length()").value(2));
 
-        verify(alertsService).getAllAlerts();
+        verify(alertsService).getAllAlerts(any(), any());
     }
 
     @Test
     void getAllAlerts_shouldReturnInternalServerErrorWhenServiceFails() throws Exception {
-        when(alertsService.getAllAlerts())
+        when(alertsService.getAllAlerts(any(), any()))
             .thenThrow(new GeneralizedException("Failed to fetch alerts", HttpStatus.INTERNAL_SERVER_ERROR));
 
         mockMvc.perform(get("/alerts"))
