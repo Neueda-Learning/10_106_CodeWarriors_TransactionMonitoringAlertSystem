@@ -122,7 +122,7 @@ public class AlertsService {
 		}
 	}
 
-	// Validation for create operation to ensure required foreign keys are provided.
+	
 	private void validateAlertForCreate(Alerts alert) {
 		if (alert == null) {
 			throw new GeneralizedException("Alert object cannot be null", HttpStatus.BAD_REQUEST);
