@@ -1,4 +1,4 @@
-/* Custom styles supplementing Bootstrap */
+
 
 body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -19,7 +19,7 @@ body {
     }
 }
 
-/* Optional tweaks for aesthetics */
+
 .navbar-brand {
     letter-spacing: 0.5px;
 }
@@ -41,7 +41,7 @@ body {
     color: #ffffff;
 }
 
-/* Rules page additions */
+
 .rules-action-group {
     flex-wrap: wrap;
     justify-content: flex-end;
