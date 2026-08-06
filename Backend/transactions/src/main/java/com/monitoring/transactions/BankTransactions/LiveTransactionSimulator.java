@@ -1,7 +1,10 @@
 package com.monitoring.transactions.BankTransactions;
 
+import com.monitoring.transactions.Alerts.AlertsRepository;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -11,21 +14,31 @@ import java.util.Random;
 @Component
 public class LiveTransactionSimulator {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(LiveTransactionSimulator.class);
+    private static final int MAX_TRANSACTIONS = 700;
+    private static final int BATCH_SIZE = 5;
+
     private final BankTransactionServices bankTransactionServices;
+    private final BankTransactionsRepository bankTransactionsRepository;
+    private final AlertsRepository alertsRepository;
     private final Random random = new Random();
 
-    public LiveTransactionSimulator(BankTransactionServices bankTransactionServices) {
+    public LiveTransactionSimulator(
+            BankTransactionServices bankTransactionServices,
+            BankTransactionsRepository bankTransactionsRepository,
+            AlertsRepository alertsRepository) {
         this.bankTransactionServices = bankTransactionServices;
+        this.bankTransactionsRepository = bankTransactionsRepository;
+        this.alertsRepository = alertsRepository;
     }
 
     
     @Scheduled(fixedRate = 60000)
     public void generateLiveTransactions() {
-        System.out.println("LiveTransactionSimulator: Generating 5 new transactions...");
-        
-        String[] statuses = {"COMPLETED", "PENDING", "FAILED"};
-        
-        for (int i = 0; i < 5; i++) {
+        enforceTransactionCap();
+        LOGGER.info("LiveTransactionSimulator: Generating {} new transactions...", BATCH_SIZE);
+
+        for (int i = 0; i < BATCH_SIZE; i++) {
             BankTransactions tx = new BankTransactions();
             
             
@@ -58,6 +71,18 @@ public class LiveTransactionSimulator {
             
             bankTransactionServices.createTransaction(tx);
         }
-        System.out.println("LiveTransactionSimulator: 5 transactions inserted successfully.");
+        LOGGER.info("LiveTransactionSimulator: {} transactions inserted successfully.", BATCH_SIZE);
+    }
+
+    private void enforceTransactionCap() {
+        long currentCount = bankTransactionsRepository.countAllTransactions();
+        if (currentCount < MAX_TRANSACTIONS) {
+            return;
+        }
+
+        // Alerts reference transactions via FK, so remove alerts first before truncating transactions.
+        alertsRepository.deleteAllAlerts();
+        bankTransactionsRepository.truncateAllTransactions();
+        LOGGER.warn("LiveTransactionSimulator: Transaction cap reached ({}). Alerts deleted and transactions truncated.", currentCount);
     }
 }
