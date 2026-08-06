@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    const API_BASE_URL = window.localStorage.getItem('apiBaseUrl') || `http://${window.location.hostname}:8085`;
+    const API_BASE_URL = '/api';
 
     let transactions = [];
     let alerts = [];
@@ -606,7 +606,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
 
-    const API_BASE_URL = window.localStorage.getItem('apiBaseUrl') || `http://${window.location.hostname}:8085`;
+    const API_BASE_URL = '/api';
 
     const RULE_TYPES = [
         { value: 'AMOUNT_THRESHOLD', label: 'Amount Threshold' },

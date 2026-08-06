@@ -13,7 +13,7 @@ pipeline {
         WORK_DIR_FILE = '.workdir'
         ENV_FILE = '.env'
         REPO_URL = 'https://github.com/Neueda-Learning/10_106_CodeWarriors_TransactionMonitoringAlertSystem.git'
-        REPO_BRANCH = 'main'
+        REPO_BRANCH = 'feature/frontend-db-setup'
         REPO_CREDENTIALS_ID = ''
     }
 
