@@ -108,4 +108,14 @@ public class BankTransactionsRepository {
 		String sql = "UPDATE bank_transactions SET status = ? WHERE id = ?";
 		return jdbcTemplate.update(sql, status, id) > 0;
 	}
+
+	public long countAllTransactions() {
+		String sql = "SELECT COUNT(*) FROM bank_transactions";
+		Long count = jdbcTemplate.queryForObject(sql, Long.class);
+		return count == null ? 0L : count;
+	}
+
+	public void truncateAllTransactions() {
+		jdbcTemplate.execute("TRUNCATE TABLE bank_transactions");
+	}
 }

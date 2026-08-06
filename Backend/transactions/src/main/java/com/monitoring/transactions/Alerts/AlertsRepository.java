@@ -121,6 +121,10 @@ public class AlertsRepository {
 		return count != null && count > 0;
 	}
 
+	public int deleteAllAlerts() {
+		return jdbcTemplate.update("DELETE FROM alerts");
+	}
+
 	private static final class AlertsRowMapper implements RowMapper<Alerts> {
 
 		@Override
