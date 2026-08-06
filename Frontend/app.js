@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    const API_BASE_URL = window.localStorage.getItem('apiBaseUrl') || 'http://localhost:8085';
+    const API_BASE_URL = window.localStorage.getItem('apiBaseUrl') || 'http://10.9.65.182:8085';
 
     let transactions = [];
     let alerts = [];
