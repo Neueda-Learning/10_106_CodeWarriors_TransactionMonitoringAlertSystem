@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@CrossOrigin(origins = "${FRONTEND_URL:http://localhost:8090}")
+@CrossOrigin(origins = {"http://localhost:8090", "http://10.9.77.71:8090"})
 @RequestMapping("/rules")
 public class RulesController {
 
