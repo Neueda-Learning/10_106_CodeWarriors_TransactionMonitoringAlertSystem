@@ -35,7 +35,7 @@ services:
   backend:
     build:
       context: .
-      dockerfile: DockerFile
+      dockerfile: Dockerfile
       target: backend
     container_name: tms-backend
     restart: unless-stopped
@@ -71,7 +71,7 @@ services:
   frontend:
     build:
       context: .
-      dockerfile: DockerFile
+      dockerfile: Dockerfile
       target: frontend
     container_name: tms-frontend
     restart: unless-stopped
